@@ -1,6 +1,6 @@
 # ProjectJIM
 
-ProjectJIM is an Xcode skeleton for a paired iPhone and Apple Watch strength-training app.
+ProjectJIM is a workout-focused app for a paired iPhone and Apple Watch for strength training.
 
 ## Included
 

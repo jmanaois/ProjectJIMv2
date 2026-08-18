@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 #if os(iOS)
+import AudioToolbox
 import UIKit
 #endif
 
@@ -13,6 +14,7 @@ final class CompletionSoundPlayer {
         let feedbackGenerator = UINotificationFeedbackGenerator()
         feedbackGenerator.prepare()
         feedbackGenerator.notificationOccurred(.success)
+        AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
 #endif
 
         do {

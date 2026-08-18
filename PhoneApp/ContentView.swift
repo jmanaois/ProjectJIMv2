@@ -190,43 +190,46 @@ private struct WorkoutHistoryView: View {
 
 private struct WorkoutCard: View {
     let workout: WorkoutSummary
+    @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                Divider()
+
+                ForEach(workout.sets) { set in
+                    WorkoutSetLine(record: set)
+                }
+            }
+            .padding(.top, 4)
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(workout.exerciseName)
                     .font(.headline)
-                Spacer()
+
                 Text(workout.completedAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
 
-            HStack(spacing: 14) {
-                Label("\(workout.sets.count) sets", systemImage: "square.stack.3d.up")
-                Label("\(workout.totalRepetitions) reps", systemImage: "repeat")
-            }
-            .font(.subheadline)
+                HStack(spacing: 14) {
+                    Label("\(workout.sets.count) sets", systemImage: "square.stack.3d.up")
+                    Label("\(workout.totalRepetitions) reps", systemImage: "repeat")
+                }
+                .font(.subheadline)
 
-            HStack(spacing: 14) {
-                Label(weightDescription, systemImage: "scalemass")
-                Label(workout.totalDuration.formattedWorkoutDuration, systemImage: "timer")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    Label(weightDescription, systemImage: "scalemass")
+                    Label(workout.totalDuration.formattedWorkoutDuration, systemImage: "timer")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-            if let averageHeartRate = workout.averageHeartRate {
-                Label("\(Int(averageHeartRate.rounded())) average bpm", systemImage: "heart.fill")
+                Label(averageHeartRateDescription, systemImage: "heart.fill")
                     .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            Divider()
-
-            ForEach(workout.sets) { set in
-                WorkoutSetLine(record: set)
+                    .foregroundStyle(heartRateColor)
             }
         }
+        .tint(.primary)
         .padding(14)
         .background(Color.secondary.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
     }
@@ -234,6 +237,15 @@ private struct WorkoutCard: View {
     private var weightDescription: String {
         guard let weight = workout.weightPounds else { return "Mixed weights" }
         return "\(weight.formatted(.number.precision(.fractionLength(1)))) lb"
+    }
+
+    private var averageHeartRateDescription: String {
+        guard let averageHeartRate = workout.averageHeartRate else { return "BPM not recorded" }
+        return "\(Int(averageHeartRate.rounded())) average bpm"
+    }
+
+    private var heartRateColor: Color {
+        workout.averageHeartRate == nil ? .secondary : .red
     }
 }
 

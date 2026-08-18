@@ -27,7 +27,7 @@
     <key>NSMotionUsageDescription</key>
     <string>ProjectJIM uses wrist motion to count exercise repetitions.</string>
     <key>WKCompanionAppBundleIdentifier</key>
-    <string>com.example.ProjectJIM</string>
+    <string>com.jmanaois.projectjim</string>
     <key>WKApplication</key>
     <true/>
     <key>WKBackgroundModes</key>

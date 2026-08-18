@@ -12,6 +12,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     @Published private(set) var currentSet = 1
     @Published private(set) var heartRate = 0.0
     @Published private(set) var isRunning = false
+    @Published private(set) var isStarting = false
     @Published private(set) var isDetectorCalibrated = false
     @Published private(set) var errorMessage: String?
 
@@ -42,8 +43,10 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     }
 
     func startWorkout() async {
-        guard !isRunning else { return }
+        guard !isRunning, !isStarting else { return }
+        isStarting = true
         errorMessage = nil
+        defer { isStarting = false }
 
         do {
             try await requestHealthAuthorization()
@@ -71,10 +74,12 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             heartRateSamples.removeAll()
 
             session.startActivity(with: workoutStartedAt)
-            try await beginCollection(builder, at: workoutStartedAt)
-            startMotionUpdates()
             isRunning = true
+            startMotionUpdates()
+            try await beginCollection(builder, at: workoutStartedAt)
         } catch {
+            motionManager.stopDeviceMotionUpdates()
+            workoutSession?.end()
             errorMessage = error.localizedDescription
             isRunning = false
         }
@@ -186,7 +191,8 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     private func receivePlan(from message: [String: Any]) {
         guard !isRunning,
               let data = message[ConnectivityKey.planData] as? Data,
-              let receivedPlan = try? decoder.decode(ExercisePlan.self, from: data) else { return }
+              let receivedPlan = try? decoder.decode(ExercisePlan.self, from: data),
+              ExerciseKind.armExercises.contains(receivedPlan.exercise) else { return }
         plan = receivedPlan
         detector = CycleRepDetector(exercise: receivedPlan.exercise)
     }

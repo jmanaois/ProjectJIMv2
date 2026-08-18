@@ -46,10 +46,20 @@ struct WatchRootView: View {
                         .font(.caption)
                         .multilineTextAlignment(.center)
 
-                    Button("Start Workout") {
+                    Button {
                         Task { await workout.startWorkout() }
+                    } label: {
+                        if workout.isStarting {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                Text("Starting…")
+                            }
+                        } else {
+                            Text("Start Workout")
+                        }
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(workout.isStarting)
 
                     if let error = workout.errorMessage {
                         Text(error)

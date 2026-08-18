@@ -6,6 +6,8 @@ enum ExerciseKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case row
     case shoulderPress
 
+    static let armExercises: [ExerciseKind] = [.bicepCurl, .row, .shoulderPress]
+
     var id: String { rawValue }
 
     var displayName: String {
@@ -21,13 +23,13 @@ enum ExerciseKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var detectorThresholds: DetectorThresholds {
         switch self {
         case .bicepCurl:
-            .init(activationRadians: 0.55, returnRadians: 0.22, minimumExcursionDuration: 0.10, minimumRepInterval: 0.28, maximumRepDuration: 4.5)
+            .init(activationRadians: 0.55, returnRadians: 0.27, minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
         case .squat:
             .init(activationRadians: 0.42, returnRadians: 0.18, minimumExcursionDuration: 0.12, minimumRepInterval: 0.35, maximumRepDuration: 5.5)
         case .row:
-            .init(activationRadians: 0.48, returnRadians: 0.20, minimumExcursionDuration: 0.10, minimumRepInterval: 0.28, maximumRepDuration: 4.5)
+            .init(activationRadians: 0.48, returnRadians: 0.25, minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
         case .shoulderPress:
-            .init(activationRadians: 0.52, returnRadians: 0.20, minimumExcursionDuration: 0.12, minimumRepInterval: 0.32, maximumRepDuration: 5.0)
+            .init(activationRadians: 0.52, returnRadians: 0.25, minimumExcursionDuration: 0.08, minimumRepInterval: 0.24, maximumRepDuration: 5.0)
         }
     }
 }

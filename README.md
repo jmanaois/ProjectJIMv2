@@ -6,10 +6,10 @@ ProjectJIM is a workout-focused app for a paired iPhone and Apple Watch for stre
 
 - SwiftUI iPhone and watchOS apps
 - HealthKit workout session and live heart-rate display on Apple Watch
-- Core Motion sampling and an exercise-specific, state-machine rep detector
+- Core Motion sampling and an arm-exercise state-machine rep detector for curls, rows, and shoulder presses
 - WatchConnectivity routine sync and live rep/set events
 - Codable on-device workout history on iPhone
-- Generated completion tone on iPhone, with Watch haptic fallback
+- Generated completion tone with Bluetooth routing and Watch haptic fallback
 - Manual rep correction and explicit set completion
 
 ## Run
@@ -24,4 +24,4 @@ Motion and WatchConnectivity behavior must be tested on physical devices. The si
 
 ## Detector status
 
-`CycleRepDetector` is an MVP signal-processing detector, not a production classifier. It calibrates a neutral wrist pitch and recognizes an away-and-return cycle. Thresholds differ by exercise and are intentionally centralized in `ExerciseKind`. Collect labeled physical-device recordings before tuning thresholds or replacing it with a Core ML activity classifier.
+`CycleRepDetector` is an MVP signal-processing detector, not a production classifier. It calibrates a neutral wrist pitch and recognizes an away-and-return cycle. Thresholds differ by supported arm exercise and are intentionally centralized in `ExerciseKind`. Collect labeled physical-device recordings before tuning thresholds or replacing it with a Core ML activity classifier.

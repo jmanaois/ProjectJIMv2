@@ -141,7 +141,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             return
         }
 
-        motionManager.deviceMotionUpdateInterval = 1.0 / 50.0
+        motionManager.deviceMotionUpdateInterval = 1.0 / 100.0
         motionManager.startDeviceMotionUpdates(to: motionQueue) { [weak self] motion, _ in
             guard let motion else { return }
             let pitch = motion.attitude.pitch
@@ -161,7 +161,10 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
                 finishCurrentSet()
             }
         }
-        isDetectorCalibrated = detector.isCalibrated
+        let calibrated = detector.isCalibrated
+        if isDetectorCalibrated != calibrated {
+            isDetectorCalibrated = calibrated
+        }
     }
 
     private func send(event: SetCompletedEvent) {

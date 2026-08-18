@@ -43,7 +43,7 @@ struct CycleRepDetector: Sendable {
         case .ready:
             let excursion = angularDistance(pitch, neutralPitch)
             guard excursion >= thresholds.activationRadians,
-                  timestamp - lastRepTimestamp > thresholds.minimumRepDuration else { return false }
+                  timestamp - lastRepTimestamp >= thresholds.minimumRepInterval else { return false }
             phase = .awayFromNeutral(startedAt: timestamp)
             return false
 
@@ -54,8 +54,15 @@ struct CycleRepDetector: Sendable {
                 return false
             }
 
-            guard angularDistance(pitch, neutralPitch) <= thresholds.returnRadians,
-                  duration >= thresholds.minimumRepDuration else { return false }
+            guard angularDistance(pitch, neutralPitch) <= thresholds.returnRadians else { return false }
+
+            // A very short excursion is likely a sensor spike. Return to the
+            // ready phase immediately so it cannot hide the next real rep.
+            guard duration >= thresholds.minimumExcursionDuration else {
+                phase = .ready
+                return false
+            }
+
             lastRepTimestamp = timestamp
             phase = .ready
             return true
@@ -67,4 +74,3 @@ struct CycleRepDetector: Sendable {
         return min(raw, .pi * 2 - raw)
     }
 }
-

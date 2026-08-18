@@ -20,10 +20,14 @@ enum ExerciseKind: String, Codable, CaseIterable, Identifiable, Sendable {
     /// Starter thresholds only. Tune these using labeled recordings from physical devices.
     var detectorThresholds: DetectorThresholds {
         switch self {
-        case .bicepCurl: .init(activationRadians: 0.55, returnRadians: 0.22, minimumRepDuration: 0.45, maximumRepDuration: 4.5)
-        case .squat: .init(activationRadians: 0.42, returnRadians: 0.18, minimumRepDuration: 0.65, maximumRepDuration: 5.5)
-        case .row: .init(activationRadians: 0.48, returnRadians: 0.20, minimumRepDuration: 0.45, maximumRepDuration: 4.5)
-        case .shoulderPress: .init(activationRadians: 0.52, returnRadians: 0.20, minimumRepDuration: 0.55, maximumRepDuration: 5.0)
+        case .bicepCurl:
+            .init(activationRadians: 0.55, returnRadians: 0.22, minimumExcursionDuration: 0.10, minimumRepInterval: 0.28, maximumRepDuration: 4.5)
+        case .squat:
+            .init(activationRadians: 0.42, returnRadians: 0.18, minimumExcursionDuration: 0.12, minimumRepInterval: 0.35, maximumRepDuration: 5.5)
+        case .row:
+            .init(activationRadians: 0.48, returnRadians: 0.20, minimumExcursionDuration: 0.10, minimumRepInterval: 0.28, maximumRepDuration: 4.5)
+        case .shoulderPress:
+            .init(activationRadians: 0.52, returnRadians: 0.20, minimumExcursionDuration: 0.12, minimumRepInterval: 0.32, maximumRepDuration: 5.0)
         }
     }
 }
@@ -31,7 +35,8 @@ enum ExerciseKind: String, Codable, CaseIterable, Identifiable, Sendable {
 struct DetectorThresholds: Sendable {
     let activationRadians: Double
     let returnRadians: Double
-    let minimumRepDuration: TimeInterval
+    let minimumExcursionDuration: TimeInterval
+    let minimumRepInterval: TimeInterval
     let maximumRepDuration: TimeInterval
 }
 

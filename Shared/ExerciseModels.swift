@@ -23,20 +23,25 @@ enum ExerciseKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var detectorThresholds: DetectorThresholds {
         switch self {
         case .bicepCurl:
-            .init(activationRadians: 0.55, returnRadians: 0.27, minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
+            .init(signal: .pitch(activationRadians: 0.55, returnRadians: 0.22), minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
         case .squat:
-            .init(activationRadians: 0.42, returnRadians: 0.18, minimumExcursionDuration: 0.12, minimumRepInterval: 0.35, maximumRepDuration: 5.5)
+            .init(signal: .verticalAcceleration(activationG: 0.10, reversalG: 0.08), minimumExcursionDuration: 0.12, minimumRepInterval: 0.35, maximumRepDuration: 5.5)
         case .row:
-            .init(activationRadians: 0.30, returnRadians: 0.15, minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
+            .init(signal: .horizontalAcceleration(activationG: 0.08, reversalG: 0.06), minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
         case .shoulderPress:
-            .init(activationRadians: 0.32, returnRadians: 0.16, minimumExcursionDuration: 0.08, minimumRepInterval: 0.24, maximumRepDuration: 5.0)
+            .init(signal: .verticalAcceleration(activationG: 0.07, reversalG: 0.055), minimumExcursionDuration: 0.08, minimumRepInterval: 0.24, maximumRepDuration: 5.0)
         }
     }
 }
 
+enum DetectorSignal: Sendable {
+    case pitch(activationRadians: Double, returnRadians: Double)
+    case verticalAcceleration(activationG: Double, reversalG: Double)
+    case horizontalAcceleration(activationG: Double, reversalG: Double)
+}
+
 struct DetectorThresholds: Sendable {
-    let activationRadians: Double
-    let returnRadians: Double
+    let signal: DetectorSignal
     let minimumExcursionDuration: TimeInterval
     let minimumRepInterval: TimeInterval
     let maximumRepDuration: TimeInterval

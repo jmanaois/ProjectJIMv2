@@ -24,4 +24,4 @@ Motion and WatchConnectivity behavior must be tested on physical devices. The si
 
 ## Detector status
 
-`CycleRepDetector` is an MVP signal-processing detector, not a production classifier. It calibrates a neutral 3D wrist orientation and recognizes an away-and-return cycle across any rotation axis. Thresholds differ by supported arm exercise and are intentionally centralized in `ExerciseKind`. Collect labeled physical-device recordings before tuning thresholds or replacing it with a Core ML activity classifier.
+`CycleRepDetector` is an MVP signal-processing detector, not a production classifier. Curls use a calibrated low-high-low wrist-pitch cycle, shoulder presses use gravity-aligned vertical acceleration, and rows use horizontal acceleration with the gravity component removed. Thresholds are intentionally centralized in `ExerciseKind`. Collect labeled physical-device recordings before tuning thresholds or replacing it with a Core ML activity classifier.

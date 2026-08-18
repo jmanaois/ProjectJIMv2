@@ -1,40 +1,69 @@
 import Foundation
 
-struct WristOrientation: Sendable {
+struct MotionVector: Sendable {
     let x: Double
     let y: Double
     let z: Double
-    let w: Double
 
-    static let identity = WristOrientation(x: 0, y: 0, z: 0, w: 1)
+    static let zero = MotionVector(x: 0, y: 0, z: 0)
 
-    var normalized: WristOrientation {
-        let magnitude = sqrt(x * x + y * y + z * z + w * w)
-        guard magnitude > 0 else { return .identity }
-        return WristOrientation(x: x / magnitude, y: y / magnitude, z: z / magnitude, w: w / magnitude)
+    var magnitude: Double {
+        sqrt(x * x + y * y + z * z)
     }
 
-    func dot(_ other: WristOrientation) -> Double {
-        x * other.x + y * other.y + z * other.z + w * other.w
+    var normalized: MotionVector {
+        let length = magnitude
+        guard length > 0 else { return .zero }
+        return scaled(by: 1 / length)
+    }
+
+    func dot(_ other: MotionVector) -> Double {
+        x * other.x + y * other.y + z * other.z
+    }
+
+    func scaled(by scale: Double) -> MotionVector {
+        MotionVector(x: x * scale, y: y * scale, z: z * scale)
+    }
+
+    func adding(_ other: MotionVector) -> MotionVector {
+        MotionVector(x: x + other.x, y: y + other.y, z: z + other.z)
+    }
+
+    func subtracting(_ other: MotionVector) -> MotionVector {
+        MotionVector(x: x - other.x, y: y - other.y, z: z - other.z)
     }
 }
 
-/// A small, testable baseline detector. It recognizes a 3D wrist-orientation
-/// excursion away from a calibrated neutral position followed by a return.
+struct RepMotionSample: Sendable {
+    let pitch: Double
+    let userAcceleration: MotionVector
+    let gravity: MotionVector
+}
+
+/// An exercise-specific rep detector:
+/// - curls use a low-high-low wrist-pitch cycle;
+/// - presses use a full vertical acceleration cycle;
+/// - rows use a full horizontal acceleration cycle.
 struct CycleRepDetector: Sendable {
     private enum Phase: Sendable {
         case calibrating
         case ready
-        case awayFromNeutral(startedAt: TimeInterval)
+        case angularAway(startedAt: TimeInterval)
+        case translatingOut(startedAt: TimeInterval, direction: MotionVector)
+        case translatingBack(startedAt: TimeInterval, direction: MotionVector)
     }
 
+    private let exercise: ExerciseKind
     private let thresholds: DetectorThresholds
     private var phase: Phase = .calibrating
-    private var calibrationSamples: [WristOrientation] = []
-    private var neutralOrientation = WristOrientation.identity
+    private var calibrationPitches: [Double] = []
+    private var calibrationSampleCount = 0
+    private var neutralPitch = 0.0
+    private var filteredAcceleration = MotionVector.zero
     private var lastRepTimestamp: TimeInterval = -.infinity
 
     init(exercise: ExerciseKind) {
+        self.exercise = exercise
         thresholds = exercise.detectorThresholds
     }
 
@@ -44,74 +73,150 @@ struct CycleRepDetector: Sendable {
     }
 
     mutating func reset(exercise: ExerciseKind? = nil) {
-        self = CycleRepDetector(exercise: exercise ?? .bicepCurl)
+        self = CycleRepDetector(exercise: exercise ?? self.exercise)
     }
 
-    /// Returns true once for each completed rep.
-    mutating func ingest(orientation: WristOrientation, timestamp: TimeInterval) -> Bool {
+    /// Returns true once a complete exercise-specific movement returns to its start.
+    mutating func ingest(sample: RepMotionSample, timestamp: TimeInterval) -> Bool {
+        filterAcceleration(sample.userAcceleration)
+
         switch phase {
         case .calibrating:
-            calibrationSamples.append(orientation.normalized)
-            if calibrationSamples.count >= 30 {
-                neutralOrientation = averageOrientation(calibrationSamples)
-                calibrationSamples.removeAll(keepingCapacity: false)
+            calibrationSampleCount += 1
+            if case .pitch = thresholds.signal {
+                calibrationPitches.append(sample.pitch)
+            }
+
+            if calibrationSampleCount >= 30 {
+                if !calibrationPitches.isEmpty {
+                    neutralPitch = calibrationPitches.reduce(0, +) / Double(calibrationPitches.count)
+                }
+                calibrationPitches.removeAll(keepingCapacity: false)
                 phase = .ready
             }
             return false
 
         case .ready:
-            let excursion = angularDistance(orientation, neutralOrientation)
-            guard excursion >= thresholds.activationRadians,
-                  timestamp - lastRepTimestamp >= thresholds.minimumRepInterval else { return false }
-            phase = .awayFromNeutral(startedAt: timestamp)
+            guard timestamp - lastRepTimestamp >= thresholds.minimumRepInterval else { return false }
+
+            switch thresholds.signal {
+            case .pitch(let activationRadians, _):
+                guard angularDistance(sample.pitch, neutralPitch) >= activationRadians else { return false }
+                phase = .angularAway(startedAt: timestamp)
+
+            case .verticalAcceleration(let activationG, _),
+                 .horizontalAcceleration(let activationG, _):
+                let signal = translationSignal(for: sample)
+                guard signal.magnitude >= activationG else { return false }
+                phase = .translatingOut(startedAt: timestamp, direction: signal.normalized)
+            }
             return false
 
-        case .awayFromNeutral(let startedAt):
+        case .angularAway(let startedAt):
             let duration = timestamp - startedAt
             if duration > thresholds.maximumRepDuration {
                 phase = .ready
                 return false
             }
 
-            guard angularDistance(orientation, neutralOrientation) <= thresholds.returnRadians else { return false }
+            guard case .pitch(_, let returnRadians) = thresholds.signal,
+                  angularDistance(sample.pitch, neutralPitch) <= returnRadians else { return false }
 
-            // A very short excursion is likely a sensor spike. Return to the
-            // ready phase immediately so it cannot hide the next real rep.
             guard duration >= thresholds.minimumExcursionDuration else {
                 phase = .ready
                 return false
             }
 
-            lastRepTimestamp = timestamp
-            phase = .ready
-            return true
+            return completeRep(at: timestamp)
+
+        case .translatingOut(let startedAt, let direction):
+            let duration = timestamp - startedAt
+            if duration > thresholds.maximumRepDuration {
+                phase = .ready
+                return false
+            }
+
+            guard translationSignal(for: sample).dot(direction) <= -translationReversalThreshold else {
+                return false
+            }
+
+            guard duration >= thresholds.minimumExcursionDuration else {
+                phase = .ready
+                return false
+            }
+
+            phase = .translatingBack(startedAt: startedAt, direction: direction)
+            return false
+
+        case .translatingBack(let startedAt, let direction):
+            let duration = timestamp - startedAt
+            if duration > thresholds.maximumRepDuration {
+                phase = .ready
+                return false
+            }
+
+            guard translationSignal(for: sample).dot(direction) >= translationActivationThreshold else {
+                return false
+            }
+
+            guard duration >= thresholds.minimumRepInterval else {
+                phase = .ready
+                return false
+            }
+
+            return completeRep(at: timestamp)
         }
     }
 
-    private func averageOrientation(_ samples: [WristOrientation]) -> WristOrientation {
-        guard let reference = samples.first else { return .identity }
-        var x = 0.0
-        var y = 0.0
-        var z = 0.0
-        var w = 0.0
-
-        for sample in samples {
-            // q and -q describe the same rotation. Align signs before averaging
-            // so equivalent samples do not cancel each other out.
-            let sign = sample.dot(reference) < 0 ? -1.0 : 1.0
-            x += sample.x * sign
-            y += sample.y * sign
-            z += sample.z * sign
-            w += sample.w * sign
-        }
-
-        return WristOrientation(x: x, y: y, z: z, w: w).normalized
+    private mutating func filterAcceleration(_ acceleration: MotionVector) {
+        let previousWeight = 0.65
+        let sampleWeight = 1 - previousWeight
+        filteredAcceleration = filteredAcceleration.scaled(by: previousWeight)
+            .adding(acceleration.scaled(by: sampleWeight))
     }
 
-    private func angularDistance(_ first: WristOrientation, _ second: WristOrientation) -> Double {
-        let normalizedFirst = first.normalized
-        let normalizedSecond = second.normalized
-        let similarity = min(1.0, abs(normalizedFirst.dot(normalizedSecond)))
-        return 2 * acos(similarity)
+    private func translationSignal(for sample: RepMotionSample) -> MotionVector {
+        let gravity = sample.gravity.normalized
+
+        switch thresholds.signal {
+        case .verticalAcceleration:
+            // Gravity points down, so the opposite projection is vertical motion.
+            let verticalAcceleration = -filteredAcceleration.dot(gravity)
+            return MotionVector(x: verticalAcceleration, y: 0, z: 0)
+
+        case .horizontalAcceleration:
+            let verticalComponent = gravity.scaled(by: filteredAcceleration.dot(gravity))
+            return filteredAcceleration.subtracting(verticalComponent)
+
+        case .pitch:
+            return .zero
+        }
+    }
+
+    private var translationActivationThreshold: Double {
+        switch thresholds.signal {
+        case .verticalAcceleration(let activationG, _),
+             .horizontalAcceleration(let activationG, _): activationG
+        case .pitch: .infinity
+        }
+    }
+
+    private var translationReversalThreshold: Double {
+        switch thresholds.signal {
+        case .verticalAcceleration(_, let reversalG),
+             .horizontalAcceleration(_, let reversalG): reversalG
+        case .pitch: .infinity
+        }
+    }
+
+    private mutating func completeRep(at timestamp: TimeInterval) -> Bool {
+        lastRepTimestamp = timestamp
+        phase = .ready
+        return true
+    }
+
+    private func angularDistance(_ first: Double, _ second: Double) -> Double {
+        let raw = abs(first - second).truncatingRemainder(dividingBy: .pi * 2)
+        return min(raw, .pi * 2 - raw)
     }
 }

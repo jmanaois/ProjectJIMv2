@@ -35,11 +35,16 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     private var workoutStartedAt = Date()
     private var setStartedAt = Date()
     private var heartRateSamples: [Double] = []
+    private var healthServicesPrepared = false
+    private var healthPreparationTask: Task<Void, Error>?
 
     override init() {
         super.init()
         connectivity?.delegate = self
         connectivity?.activate()
+        Task { @MainActor [weak self] in
+            await self?.prewarmFirstWorkout()
+        }
     }
 
     func startWorkout() async {
@@ -49,7 +54,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         defer { isStarting = false }
 
         do {
-            try await requestHealthAuthorization()
+            try await prepareHealthServices()
 
             let configuration = HKWorkoutConfiguration()
             configuration.activityType = .traditionalStrengthTraining
@@ -82,6 +87,36 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             workoutSession?.end()
             errorMessage = error.localizedDescription
             isRunning = false
+        }
+    }
+
+    private func prewarmFirstWorkout() async {
+        let workoutType = HKObjectType.workoutType()
+        guard healthStore.authorizationStatus(for: workoutType) != .notDetermined else { return }
+        try? await prepareHealthServices()
+    }
+
+    private func prepareHealthServices() async throws {
+        if healthServicesPrepared { return }
+
+        if let healthPreparationTask {
+            try await healthPreparationTask.value
+            return
+        }
+
+        let preparationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try await self.requestHealthAuthorization()
+        }
+        healthPreparationTask = preparationTask
+
+        do {
+            try await preparationTask.value
+            healthServicesPrepared = true
+            healthPreparationTask = nil
+        } catch {
+            healthPreparationTask = nil
+            throw error
         }
     }
 

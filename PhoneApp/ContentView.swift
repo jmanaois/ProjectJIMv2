@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var targetReps = 10
     @State private var weightPounds = 22.0
     @State private var savedEventTimestamp: Date?
+    @FocusState private var isWeightFieldFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,14 @@ struct ContentView: View {
                 historySection
             }
             .navigationTitle("ProjectJIM")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isWeightFieldFocused = false
+                    }
+                }
+            }
             .onChange(of: connectivity.latestEvent?.timestamp) { _, _ in saveLatestEventIfNeeded() }
         }
     }
@@ -36,16 +45,11 @@ struct ContentView: View {
             HStack {
                 Text("Weight")
                 Spacer()
-                Picker("Weight", selection: $weightPounds) {
-                    ForEach(0...1_000, id: \.self) { halfPounds in
-                        let pounds = Double(halfPounds) / 2
-                        Text(pounds.formatted(.number.precision(.fractionLength(1)))).tag(pounds)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.wheel)
-                .frame(width: 110, height: 90)
-                .clipped()
+                TextField("lb", value: $weightPounds, format: .number.precision(.fractionLength(1)))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .focused($isWeightFieldFocused)
+                    .submitLabel(.done)
                 Text("lb")
                     .foregroundStyle(.secondary)
             }

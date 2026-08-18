@@ -42,12 +42,28 @@ struct ExercisePlan: Codable, Identifiable, Equatable, Sendable {
     var targetReps: Int
     var weightKilograms: Double
 
+    var weightPounds: Double {
+        WeightConversion.pounds(fromKilograms: weightKilograms)
+    }
+
     static let sample = ExercisePlan(
         exercise: .bicepCurl,
         targetSets: 3,
         targetReps: 10,
         weightKilograms: 10
     )
+}
+
+enum WeightConversion {
+    static let poundsPerKilogram = 2.204_622_621_8
+
+    static func pounds(fromKilograms kilograms: Double) -> Double {
+        kilograms * poundsPerKilogram
+    }
+
+    static func kilograms(fromPounds pounds: Double) -> Double {
+        pounds / poundsPerKilogram
+    }
 }
 
 struct SetCompletedEvent: Codable, Sendable {
@@ -66,4 +82,3 @@ enum ConnectivityKey {
     static let messageType = "messageType"
     static let setCompleted = "setCompleted"
 }
-

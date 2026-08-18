@@ -42,7 +42,7 @@ struct WatchRootView: View {
                         .tint(.green)
                     Button("End Workout", role: .destructive) { workout.endWorkout() }
                 } else {
-                    Text("\(workout.plan.targetSets) × \(workout.plan.targetReps) at \(workout.plan.weightKilograms, specifier: "%.1f") kg")
+                    Text("\(workout.plan.targetSets) × \(workout.plan.targetReps) at \(workout.plan.weightPounds, specifier: "%.1f") lb")
                         .font(.caption)
                         .multilineTextAlignment(.center)
 
@@ -62,4 +62,3 @@ struct WatchRootView: View {
         }
     }
 }
-

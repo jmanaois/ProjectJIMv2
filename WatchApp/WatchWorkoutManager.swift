@@ -26,6 +26,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     private let connectivity: WCSession? = WCSession.isSupported() ? .default : nil
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let soundPlayer = CompletionSoundPlayer()
 
     private var workoutSession: HKWorkoutSession?
     private var workoutBuilder: HKLiveWorkoutBuilder?
@@ -95,6 +96,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             timestamp: Date()
         )
         send(event: event)
+        soundPlayer.playSetCompleteTone(onlyForExternalOutput: true)
         WKInterfaceDevice.current().play(.success)
 
         if currentSet >= plan.targetSets {

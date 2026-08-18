@@ -25,6 +25,17 @@ struct WorkoutSetRecord: Codable, Identifiable {
     var exerciseName: String {
         ExerciseKind(rawValue: exerciseRawValue)?.displayName ?? exerciseRawValue
     }
+
+    var weightPounds: Double {
+        WeightConversion.pounds(fromKilograms: weightKilograms)
+    }
+
+    var formattedDuration: String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return minutes > 0 ? "\(minutes)m \(seconds)s" : "\(seconds)s"
+    }
 }
 
 @MainActor

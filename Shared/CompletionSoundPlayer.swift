@@ -5,11 +5,22 @@ import Foundation
 final class CompletionSoundPlayer {
     private var player: AVAudioPlayer?
 
-    func playSetCompleteTone() {
+    func playSetCompleteTone(onlyForExternalOutput: Bool = false) {
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
+            // Playback follows the system-selected route. This explicitly keeps
+            // high-quality Bluetooth headphone routes available.
+            try audioSession.setCategory(
+                .playback,
+                mode: .default,
+                options: [.duckOthers, .allowBluetoothA2DP]
+            )
             try audioSession.setActive(true)
+
+            if onlyForExternalOutput && !Self.hasExternalOutput(audioSession.currentRoute.outputs) {
+                try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+                return
+            }
 
             player = try AVAudioPlayer(data: Self.makeToneWAV())
             player?.volume = 0.9
@@ -18,6 +29,17 @@ final class CompletionSoundPlayer {
         } catch {
             // The Watch haptic remains the fallback if the phone cannot play audio.
             print("Unable to play set-completion tone: \(error)")
+        }
+    }
+
+    private static func hasExternalOutput(_ outputs: [AVAudioSessionPortDescription]) -> Bool {
+        outputs.contains { output in
+            switch output.portType {
+            case .bluetoothA2DP, .bluetoothLE, .headphones, .airPlay:
+                true
+            default:
+                false
+            }
         }
     }
 
@@ -63,4 +85,3 @@ final class CompletionSoundPlayer {
         return wav
     }
 }
-

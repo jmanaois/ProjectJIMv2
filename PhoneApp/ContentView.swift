@@ -7,8 +7,9 @@ struct ContentView: View {
     @State private var exercise: ExerciseKind = .bicepCurl
     @State private var targetSets = 3
     @State private var targetReps = 10
-    @State private var weight = 10.0
+    @State private var weightPounds = 22.0
     @State private var savedEventTimestamp: Date?
+    @FocusState private var isWeightFieldFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,14 @@ struct ContentView: View {
                 historySection
             }
             .navigationTitle("ProjectJIM")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isWeightFieldFocused = false
+                    }
+                }
+            }
             .onChange(of: connectivity.latestEvent?.timestamp) { _, _ in saveLatestEventIfNeeded() }
         }
     }
@@ -36,10 +45,12 @@ struct ContentView: View {
             HStack {
                 Text("Weight")
                 Spacer()
-                TextField("kg", value: $weight, format: .number.precision(.fractionLength(1)))
+                TextField("lb", value: $weightPounds, format: .number.precision(.fractionLength(1)))
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
-                Text("kg")
+                    .focused($isWeightFieldFocused)
+                    .submitLabel(.done)
+                Text("lb")
                     .foregroundStyle(.secondary)
             }
 
@@ -72,8 +83,8 @@ struct ContentView: View {
                 ForEach(history.records.prefix(20)) { record in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(record.exerciseName).font(.headline)
-                        Text("\(record.repetitions) reps × \(record.weightKilograms, specifier: "%.1f") kg")
-                        Text(record.timestamp, style: .relative)
+                        Text("\(record.repetitions) reps × \(record.weightPounds, specifier: "%.1f") lb")
+                        Text("\(record.formattedDuration) • \(record.timestamp.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -87,7 +98,7 @@ struct ContentView: View {
             exercise: exercise,
             targetSets: targetSets,
             targetReps: targetReps,
-            weightKilograms: weight
+            weightKilograms: WeightConversion.kilograms(fromPounds: weightPounds)
         )
     }
 

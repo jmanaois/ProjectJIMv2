@@ -13,6 +13,8 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     @Published private(set) var heartRate = 0.0
     @Published private(set) var isRunning = false
     @Published private(set) var isStarting = false
+    @Published private(set) var isResting = false
+    @Published private(set) var restSecondsRemaining = 0
     @Published private(set) var isDetectorCalibrated = false
     @Published private(set) var errorMessage: String?
 
@@ -38,6 +40,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     private var activeWorkoutID = UUID()
     private var healthServicesPrepared = false
     private var healthPreparationTask: Task<Void, Error>?
+    private var restTask: Task<Void, Never>?
 
     override init() {
         super.init()
@@ -78,6 +81,10 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             detector = CycleRepDetector(exercise: plan.exercise)
             repetitions = 0
             currentSet = 1
+            isResting = false
+            restSecondsRemaining = 0
+            restTask?.cancel()
+            restTask = nil
             heartRateSamples.removeAll()
 
             session.startActivity(with: workoutStartedAt)
@@ -85,10 +92,14 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             startMotionUpdates()
             try await beginCollection(builder, at: workoutStartedAt)
         } catch {
+            restTask?.cancel()
+            restTask = nil
             motionManager.stopDeviceMotionUpdates()
             workoutSession?.end()
             errorMessage = error.localizedDescription
             isRunning = false
+            isResting = false
+            restSecondsRemaining = 0
         }
     }
 
@@ -123,20 +134,22 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     }
 
     func adjustRepetitions(by amount: Int) {
+        guard isRunning, !isResting else { return }
         repetitions = max(0, repetitions + amount)
     }
 
     func finishCurrentSet() {
-        guard isRunning, repetitions > 0 else { return }
+        guard isRunning, !isResting, repetitions > 0 else { return }
+        let completedAt = Date()
         let event = SetCompletedEvent(
             workoutID: activeWorkoutID,
             exercise: plan.exercise,
             setNumber: currentSet,
             repetitions: repetitions,
             weightKilograms: plan.weightKilograms,
-            duration: Date().timeIntervalSince(setStartedAt),
+            duration: completedAt.timeIntervalSince(setStartedAt),
             averageHeartRate: heartRateSamples.isEmpty ? nil : heartRateSamples.reduce(0, +) / Double(heartRateSamples.count),
-            timestamp: Date()
+            timestamp: completedAt
         )
         send(event: event)
         soundPlayer.playSetCompleteTone(onlyForExternalOutput: true)
@@ -147,15 +160,23 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         } else {
             currentSet += 1
             repetitions = 0
-            setStartedAt = Date()
             heartRateSamples.removeAll()
-            detector = CycleRepDetector(exercise: plan.exercise)
             isDetectorCalibrated = false
+            beginRest()
         }
+    }
+
+    func skipRest() {
+        guard isRunning, isResting else { return }
+        completeRest(shouldNotify: false)
     }
 
     func endWorkout() {
         guard isRunning else { return }
+        restTask?.cancel()
+        restTask = nil
+        isResting = false
+        restSecondsRemaining = 0
         motionManager.stopDeviceMotionUpdates()
         workoutSession?.end()
         isRunning = false
@@ -208,7 +229,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     }
 
     private func ingestMotion(sample: RepMotionSample, timestamp: TimeInterval) {
-        guard isRunning else { return }
+        guard isRunning, !isResting else { return }
         if detector.ingest(sample: sample, timestamp: timestamp) {
             repetitions += 1
             WKInterfaceDevice.current().play(.click)
@@ -238,13 +259,78 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         }
     }
 
-    private func receivePlan(from message: [String: Any]) {
+    private func beginRest() {
+        let duration = max(0, plan.restDurationSeconds)
+        guard duration > 0 else {
+            prepareNextSet()
+            return
+        }
+
+        restTask?.cancel()
+        isResting = true
+        restSecondsRemaining = duration
+        let restEndsAt = Date().addingTimeInterval(TimeInterval(duration))
+
+        restTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let remaining = max(0, Int(ceil(restEndsAt.timeIntervalSinceNow)))
+                self.restSecondsRemaining = remaining
+
+                if remaining == 0 {
+                    self.completeRest(shouldNotify: true)
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        }
+    }
+
+    private func completeRest(shouldNotify: Bool) {
+        restTask?.cancel()
+        restTask = nil
+        guard isRunning else {
+            isResting = false
+            restSecondsRemaining = 0
+            return
+        }
+
+        isResting = false
+        restSecondsRemaining = 0
+        prepareNextSet()
+
+        guard shouldNotify else { return }
+        soundPlayer.playSetCompleteTone(onlyForExternalOutput: true)
+        WKInterfaceDevice.current().play(.notification)
+        sendRestCompleted()
+    }
+
+    private func prepareNextSet() {
+        setStartedAt = Date()
+        heartRateSamples.removeAll()
+        detector = CycleRepDetector(exercise: plan.exercise)
+        isDetectorCalibrated = false
+    }
+
+    private func sendRestCompleted() {
+        guard connectivity?.isReachable == true else { return }
+        connectivity?.sendMessage(
+            [ConnectivityKey.messageType: ConnectivityKey.restCompleted],
+            replyHandler: nil,
+            errorHandler: nil
+        )
+    }
+
+    @discardableResult
+    private func receivePlan(from message: [String: Any]) -> Bool {
         guard !isRunning,
               let data = message[ConnectivityKey.planData] as? Data,
               let receivedPlan = try? decoder.decode(ExercisePlan.self, from: data),
-              ExerciseKind.armExercises.contains(receivedPlan.exercise) else { return }
+              ExerciseKind.armExercises.contains(receivedPlan.exercise) else { return false }
         plan = receivedPlan
         detector = CycleRepDetector(exercise: receivedPlan.exercise)
+        return true
     }
 
     private enum WorkoutError: LocalizedError {
@@ -273,6 +359,10 @@ extension WatchWorkoutManager: HKWorkoutSessionDelegate {
         Task { @MainActor in
             self.errorMessage = error.localizedDescription
             self.isRunning = false
+            self.isResting = false
+            self.restSecondsRemaining = 0
+            self.restTask?.cancel()
+            self.restTask = nil
             self.motionManager.stopDeviceMotionUpdates()
         }
     }
@@ -292,7 +382,9 @@ extension WatchWorkoutManager: HKLiveWorkoutBuilderDelegate {
               ) else { return }
         Task { @MainActor in
             self.heartRate = value
-            self.heartRateSamples.append(value)
+            if self.isRunning, !self.isResting {
+                self.heartRateSamples.append(value)
+            }
         }
     }
 }
@@ -309,6 +401,17 @@ extension WatchWorkoutManager: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         Task { @MainActor in self.receivePlan(from: message) }
+    }
+
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
+        Task { @MainActor in
+            let accepted = self.receivePlan(from: message)
+            replyHandler([ConnectivityKey.planAccepted: accepted])
+        }
     }
 
     nonisolated func session(

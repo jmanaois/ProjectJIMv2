@@ -1,19 +1,28 @@
 import AVFoundation
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 @MainActor
 final class CompletionSoundPlayer {
     private var player: AVAudioPlayer?
 
     func playSetCompleteTone(onlyForExternalOutput: Bool = false) {
+#if os(iOS)
+        let feedbackGenerator = UINotificationFeedbackGenerator()
+        feedbackGenerator.prepare()
+        feedbackGenerator.notificationOccurred(.success)
+#endif
+
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            // Playback follows the system-selected route. This explicitly keeps
-            // high-quality Bluetooth headphone routes available.
+            // The playback category uses the system-selected Bluetooth route
+            // when present and the built-in speaker otherwise.
             try audioSession.setCategory(
                 .playback,
                 mode: .default,
-                options: [.duckOthers, .allowBluetoothA2DP]
+                options: [.duckOthers]
             )
             try audioSession.setActive(true)
 
@@ -23,12 +32,12 @@ final class CompletionSoundPlayer {
             }
 
             player = try AVAudioPlayer(data: Self.makeToneWAV())
-            player?.volume = 0.9
+            player?.volume = 1.0
             player?.prepareToPlay()
             player?.play()
         } catch {
-            // The Watch haptic remains the fallback if the phone cannot play audio.
-            print("Unable to play set-completion tone: \(error)")
+            // Haptics remain the fallback if the selected route cannot play audio.
+            print("Unable to play completion tone: \(error)")
         }
     }
 
@@ -45,15 +54,15 @@ final class CompletionSoundPlayer {
 
     private static func makeToneWAV() -> Data {
         let sampleRate = 44_100
-        let duration = 0.45
+        let duration = 0.6
         let sampleCount = Int(Double(sampleRate) * duration)
         var pcm = Data(capacity: sampleCount * 2)
 
         for index in 0..<sampleCount {
             let time = Double(index) / Double(sampleRate)
-            let frequency = time < 0.22 ? 659.25 : 880.0
+            let frequency = time < 0.28 ? 659.25 : 880.0
             let envelope = min(1, time * 18) * min(1, (duration - time) * 12)
-            let value = Int16(sin(2 * .pi * frequency * time) * envelope * 16_000)
+            let value = Int16(sin(2 * .pi * frequency * time) * envelope * 24_000)
             var littleEndian = value.littleEndian
             withUnsafeBytes(of: &littleEndian) { pcm.append(contentsOf: $0) }
         }

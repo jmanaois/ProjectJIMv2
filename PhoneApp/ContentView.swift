@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var targetSets = 3
     @State private var targetReps = 10
     @State private var weightPounds = 22.0
+    @State private var restDurationSeconds = 60
     @State private var savedEventTimestamp: Date?
     @FocusState private var isWeightFieldFocused: Bool
 
@@ -33,6 +34,13 @@ struct ContentView: View {
             }
         }
         .onChange(of: connectivity.latestEvent?.timestamp) { _, _ in saveLatestEventIfNeeded() }
+        .alert(item: $connectivity.planSendConfirmation) { confirmation in
+            Alert(
+                title: Text("Workout Sent"),
+                message: Text(confirmation.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 
     private var planSection: some View {
@@ -45,6 +53,12 @@ struct ContentView: View {
 
             Stepper("Sets: \(targetSets)", value: $targetSets, in: 1...10)
             Stepper("Reps: \(targetReps)", value: $targetReps, in: 1...50)
+
+            Picker("Rest between sets", selection: $restDurationSeconds) {
+                ForEach([0, 15, 30, 45, 60, 90, 120, 180], id: \.self) { seconds in
+                    Text(restLabel(for: seconds)).tag(seconds)
+                }
+            }
 
             HStack {
                 Text("Weight")
@@ -66,6 +80,7 @@ struct ContentView: View {
             }
 
             Button("Send Plan to Watch") {
+                isWeightFieldFocused = false
                 connectivity.send(plan: currentPlan)
             }
             .buttonStyle(.borderedProminent)
@@ -108,8 +123,13 @@ struct ContentView: View {
             exercise: exercise,
             targetSets: targetSets,
             targetReps: targetReps,
-            weightKilograms: WeightConversion.kilograms(fromPounds: weightPounds)
+            weightKilograms: WeightConversion.kilograms(fromPounds: weightPounds),
+            restDurationSeconds: restDurationSeconds
         )
+    }
+
+    private func restLabel(for seconds: Int) -> String {
+        ExercisePlan.formattedRestDuration(seconds: seconds)
     }
 
     private func saveLatestEventIfNeeded() {

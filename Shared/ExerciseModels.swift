@@ -48,22 +48,89 @@ struct DetectorThresholds: Sendable {
 }
 
 struct ExercisePlan: Codable, Identifiable, Equatable, Sendable {
-    var id = UUID()
+    var id: UUID
     var exercise: ExerciseKind
     var targetSets: Int
     var targetReps: Int
     var weightKilograms: Double
+    var restDurationSeconds: Int
+
+    init(
+        id: UUID = UUID(),
+        exercise: ExerciseKind,
+        targetSets: Int,
+        targetReps: Int,
+        weightKilograms: Double,
+        restDurationSeconds: Int = 60
+    ) {
+        self.id = id
+        self.exercise = exercise
+        self.targetSets = targetSets
+        self.targetReps = targetReps
+        self.weightKilograms = weightKilograms
+        self.restDurationSeconds = max(0, restDurationSeconds)
+    }
 
     var weightPounds: Double {
         WeightConversion.pounds(fromKilograms: weightKilograms)
+    }
+
+    var formattedRestDuration: String {
+        Self.formattedRestDuration(seconds: restDurationSeconds)
+    }
+
+    static func formattedRestDuration(seconds: Int) -> String {
+        switch max(0, seconds) {
+        case 0:
+            return "No rest"
+        case 1..<60:
+            return "\(seconds) sec"
+        default:
+            let minutes = seconds / 60
+            let remainingSeconds = seconds % 60
+            return remainingSeconds == 0 ? "\(minutes) min" : "\(minutes)m \(remainingSeconds)s"
+        }
     }
 
     static let sample = ExercisePlan(
         exercise: .bicepCurl,
         targetSets: 3,
         targetReps: 10,
-        weightKilograms: 10
+        weightKilograms: 10,
+        restDurationSeconds: 60
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case exercise
+        case targetSets
+        case targetReps
+        case weightKilograms
+        case restDurationSeconds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        exercise = try container.decode(ExerciseKind.self, forKey: .exercise)
+        targetSets = try container.decode(Int.self, forKey: .targetSets)
+        targetReps = try container.decode(Int.self, forKey: .targetReps)
+        weightKilograms = try container.decode(Double.self, forKey: .weightKilograms)
+        restDurationSeconds = max(
+            0,
+            try container.decodeIfPresent(Int.self, forKey: .restDurationSeconds) ?? 60
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(exercise, forKey: .exercise)
+        try container.encode(targetSets, forKey: .targetSets)
+        try container.encode(targetReps, forKey: .targetReps)
+        try container.encode(weightKilograms, forKey: .weightKilograms)
+        try container.encode(restDurationSeconds, forKey: .restDurationSeconds)
+    }
 }
 
 enum WeightConversion {
@@ -94,4 +161,6 @@ enum ConnectivityKey {
     static let eventData = "eventData"
     static let messageType = "messageType"
     static let setCompleted = "setCompleted"
+    static let restCompleted = "restCompleted"
+    static let planAccepted = "planAccepted"
 }

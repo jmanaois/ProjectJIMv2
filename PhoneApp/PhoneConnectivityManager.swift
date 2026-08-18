@@ -2,10 +2,16 @@ import Combine
 import Foundation
 import WatchConnectivity
 
+struct PlanSendConfirmation: Identifiable {
+    let id = UUID()
+    let message: String
+}
+
 @MainActor
 final class PhoneConnectivityManager: NSObject, ObservableObject {
     @Published private(set) var latestEvent: SetCompletedEvent?
     @Published private(set) var isWatchReachable = false
+    @Published var planSendConfirmation: PlanSendConfirmation?
 
     private let session: WCSession? = WCSession.isSupported() ? .default : nil
     private let encoder = JSONEncoder()
@@ -23,16 +29,33 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         try? session?.updateApplicationContext([ConnectivityKey.planData: data])
 
         if session?.isReachable == true {
-            session?.sendMessage([ConnectivityKey.planData: data], replyHandler: nil)
+            session?.sendMessage(
+                [ConnectivityKey.planData: data],
+                replyHandler: { [weak self] reply in
+                    guard reply[ConnectivityKey.planAccepted] as? Bool == true else { return }
+                    Task { @MainActor in
+                        self?.planSendConfirmation = PlanSendConfirmation(
+                            message: "\(plan.exercise.displayName), \(plan.targetSets) sets of \(plan.targetReps). Rest between sets: \(plan.formattedRestDuration.lowercased())."
+                        )
+                    }
+                },
+                errorHandler: nil
+            )
         }
     }
 
     private func receive(_ message: [String: Any]) {
-        guard message[ConnectivityKey.messageType] as? String == ConnectivityKey.setCompleted,
-              let data = message[ConnectivityKey.eventData] as? Data,
-              let event = try? decoder.decode(SetCompletedEvent.self, from: data) else { return }
-        latestEvent = event
-        soundPlayer.playSetCompleteTone()
+        switch message[ConnectivityKey.messageType] as? String {
+        case ConnectivityKey.setCompleted:
+            guard let data = message[ConnectivityKey.eventData] as? Data,
+                  let event = try? decoder.decode(SetCompletedEvent.self, from: data) else { return }
+            latestEvent = event
+            soundPlayer.playSetCompleteTone()
+        case ConnectivityKey.restCompleted:
+            soundPlayer.playSetCompleteTone()
+        default:
+            return
+        }
     }
 }
 
@@ -63,4 +86,3 @@ extension PhoneConnectivityManager: WCSessionDelegate {
         Task { @MainActor in self.receive(userInfo) }
     }
 }
-

@@ -12,15 +12,27 @@ struct ContentView: View {
     @FocusState private var isWeightFieldFocused: Bool
 
     var body: some View {
-        NavigationStack {
-            List {
-                planSection
-                statusSection
-                historySection
+        TabView {
+            NavigationStack {
+                List {
+                    planSection
+                    statusSection
+                    recentWorkoutsSection
+                }
+                .navigationTitle("ProjectJIM")
             }
-            .navigationTitle("ProjectJIM")
-            .onChange(of: connectivity.latestEvent?.timestamp) { _, _ in saveLatestEventIfNeeded() }
+            .tabItem {
+                Label("Home", systemImage: "house.fill")
+            }
+
+            NavigationStack {
+                WorkoutHistoryView()
+            }
+            .tabItem {
+                Label("Workouts", systemImage: "list.bullet.clipboard.fill")
+            }
         }
+        .onChange(of: connectivity.latestEvent?.timestamp) { _, _ in saveLatestEventIfNeeded() }
     }
 
     private var planSection: some View {
@@ -74,26 +86,21 @@ struct ContentView: View {
         }
     }
 
-    private var historySection: some View {
-        Section("Recent sets") {
-            if history.records.isEmpty {
-                ContentUnavailableView("No sets yet", systemImage: "figure.strengthtraining.traditional")
+    private var recentWorkoutsSection: some View {
+        Section("Recent workouts") {
+            if workouts.isEmpty {
+                ContentUnavailableView("No workouts yet", systemImage: "figure.strengthtraining.traditional")
             } else {
-                ForEach(recentRecords.prefix(3)) { record in
-                    RecentSetRow(record: record)
-                }
-
-                NavigationLink {
-                    WorkoutHistoryView()
-                } label: {
-                    Label("View All Sets (\(history.records.count))", systemImage: "clock.arrow.circlepath")
+                ForEach(workouts.prefix(3)) { workout in
+                    RecentWorkoutRow(workout: workout)
                 }
             }
         }
     }
 
-    private var recentRecords: [WorkoutSetRecord] {
-        history.records.sorted { $0.timestamp > $1.timestamp }
+    private var workouts: [WorkoutSummary] {
+        WorkoutHistoryGrouping.workouts(from: history.records)
+            .sorted { $0.completedAt > $1.completedAt }
     }
 
     private var currentPlan: ExercisePlan {
@@ -112,42 +119,54 @@ struct ContentView: View {
     }
 }
 
-private struct RecentSetRow: View {
-    let record: WorkoutSetRecord
+private struct RecentWorkoutRow: View {
+    let workout: WorkoutSummary
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(record.exerciseName)
+            Text(workout.exerciseName)
                 .font(.headline)
-            Text("Set \(record.setNumber) • \(record.repetitions) reps • \(record.weightPounds, specifier: "%.1f") lb")
-            Text("\(record.formattedDuration) • \(record.timestamp.formatted(date: .abbreviated, time: .shortened))")
+            Text("\(workout.sets.count) sets • \(workout.totalRepetitions) reps • \(weightDescription)")
+            Text("\(formattedDuration) • \(workout.completedAt.formatted(date: .abbreviated, time: .shortened))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var weightDescription: String {
+        guard let weight = workout.weightPounds else { return "Mixed weights" }
+        return "\(weight.formatted(.number.precision(.fractionLength(1)))) lb"
+    }
+
+    private var formattedDuration: String {
+        workout.totalDuration.formattedWorkoutDuration
     }
 }
 
 private struct WorkoutHistoryView: View {
     @EnvironmentObject private var history: WorkoutHistoryStore
-    @State private var sortOrder: HistorySortOrder = .newestFirst
+    @State private var sortOrder: WorkoutSortOrder = .newestFirst
 
     var body: some View {
         List {
-            if history.records.isEmpty {
-                ContentUnavailableView("No sets yet", systemImage: "figure.strengthtraining.traditional")
+            if workouts.isEmpty {
+                ContentUnavailableView("No workouts yet", systemImage: "figure.strengthtraining.traditional")
             } else {
-                ForEach(sortedRecords) { record in
-                    WorkoutSetDetailRow(record: record)
+                ForEach(workouts) { workout in
+                    WorkoutCard(workout: workout)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
             }
         }
-        .navigationTitle("Workout History")
-        .navigationBarTitleDisplayMode(.inline)
+        .listStyle(.plain)
+        .navigationTitle("Workouts")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker("Chronological order", selection: $sortOrder) {
-                        ForEach(HistorySortOrder.allCases) { order in
+                        ForEach(WorkoutSortOrder.allCases) { order in
                             Label(order.title, systemImage: order.systemImage).tag(order)
                         }
                     }
@@ -158,49 +177,99 @@ private struct WorkoutHistoryView: View {
         }
     }
 
-    private var sortedRecords: [WorkoutSetRecord] {
-        history.records.sorted {
-            switch sortOrder {
-            case .newestFirst: $0.timestamp > $1.timestamp
-            case .oldestFirst: $0.timestamp < $1.timestamp
+    private var workouts: [WorkoutSummary] {
+        WorkoutHistoryGrouping.workouts(from: history.records)
+            .sorted {
+                switch sortOrder {
+                case .newestFirst: $0.completedAt > $1.completedAt
+                case .oldestFirst: $0.completedAt < $1.completedAt
+                }
+            }
+    }
+}
+
+private struct WorkoutCard: View {
+    let workout: WorkoutSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(workout.exerciseName)
+                    .font(.headline)
+                Spacer()
+                Text(workout.completedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 14) {
+                Label("\(workout.sets.count) sets", systemImage: "square.stack.3d.up")
+                Label("\(workout.totalRepetitions) reps", systemImage: "repeat")
+            }
+            .font(.subheadline)
+
+            HStack(spacing: 14) {
+                Label(weightDescription, systemImage: "scalemass")
+                Label(workout.totalDuration.formattedWorkoutDuration, systemImage: "timer")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let averageHeartRate = workout.averageHeartRate {
+                Label("\(Int(averageHeartRate.rounded())) average bpm", systemImage: "heart.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Divider()
+
+            ForEach(workout.sets) { set in
+                WorkoutSetLine(record: set)
+            }
+        }
+        .padding(14)
+        .background(Color.secondary.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var weightDescription: String {
+        guard let weight = workout.weightPounds else { return "Mixed weights" }
+        return "\(weight.formatted(.number.precision(.fractionLength(1)))) lb"
+    }
+}
+
+private struct WorkoutSetLine: View {
+    let record: WorkoutSetRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("Set \(record.setNumber)")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text("\(record.repetitions) reps")
+                Spacer()
+                Text("\(record.weightPounds, specifier: "%.1f") lb")
+                Spacer()
+                Text(record.formattedDuration)
+            }
+            .font(.caption)
+
+            if let averageHeartRate = record.averageHeartRate {
+                Label("\(Int(averageHeartRate.rounded())) bpm", systemImage: "heart")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 }
 
-private struct WorkoutSetDetailRow: View {
-    let record: WorkoutSetRecord
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(record.exerciseName)
-                .font(.headline)
-            Text(record.timestamp.formatted(date: .complete, time: .shortened))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            LabeledContent("Set number", value: "\(record.setNumber)")
-            LabeledContent("Repetitions", value: "\(record.repetitions)")
-            LabeledContent("Weight", value: formattedWeight)
-            LabeledContent("Duration", value: record.formattedDuration)
-            LabeledContent("Average heart rate", value: formattedHeartRate)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var formattedHeartRate: String {
-        guard let averageHeartRate = record.averageHeartRate else { return "Not recorded" }
-        return "\(Int(averageHeartRate.rounded())) bpm"
-    }
-
-    private var formattedWeight: String {
-        "\(record.weightPounds.formatted(.number.precision(.fractionLength(1)))) lb"
-    }
-}
-
-private enum HistorySortOrder: String, CaseIterable, Identifiable {
+private enum WorkoutSortOrder: String, CaseIterable, Identifiable {
     case newestFirst
     case oldestFirst
 
@@ -218,5 +287,14 @@ private enum HistorySortOrder: String, CaseIterable, Identifiable {
         case .newestFirst: "arrow.down"
         case .oldestFirst: "arrow.up"
         }
+    }
+}
+
+private extension TimeInterval {
+    var formattedWorkoutDuration: String {
+        let totalSeconds = max(0, Int(rounded()))
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return minutes > 0 ? "\(minutes)m \(seconds)s" : "\(seconds)s"
     }
 }

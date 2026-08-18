@@ -35,6 +35,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     private var workoutStartedAt = Date()
     private var setStartedAt = Date()
     private var heartRateSamples: [Double] = []
+    private var activeWorkoutID = UUID()
     private var healthServicesPrepared = false
     private var healthPreparationTask: Task<Void, Error>?
 
@@ -71,6 +72,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
 
             workoutSession = session
             workoutBuilder = builder
+            activeWorkoutID = UUID()
             workoutStartedAt = Date()
             setStartedAt = workoutStartedAt
             detector = CycleRepDetector(exercise: plan.exercise)
@@ -127,6 +129,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     func finishCurrentSet() {
         guard isRunning, repetitions > 0 else { return }
         let event = SetCompletedEvent(
+            workoutID: activeWorkoutID,
             exercise: plan.exercise,
             setNumber: currentSet,
             repetitions: repetitions,

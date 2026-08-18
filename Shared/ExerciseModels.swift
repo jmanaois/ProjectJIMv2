@@ -79,6 +79,7 @@ enum WeightConversion {
 }
 
 struct SetCompletedEvent: Codable, Sendable {
+    let workoutID: UUID?
     let exercise: ExerciseKind
     let setNumber: Int
     let repetitions: Int

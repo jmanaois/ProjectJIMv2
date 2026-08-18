@@ -184,17 +184,23 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         motionManager.deviceMotionUpdateInterval = 1.0 / 100.0
         motionManager.startDeviceMotionUpdates(to: motionQueue) { [weak self] motion, _ in
             guard let motion else { return }
-            let pitch = motion.attitude.pitch
+            let quaternion = motion.attitude.quaternion
+            let orientation = WristOrientation(
+                x: quaternion.x,
+                y: quaternion.y,
+                z: quaternion.z,
+                w: quaternion.w
+            )
             let timestamp = motion.timestamp
             Task { @MainActor [weak self] in
-                self?.ingestMotion(pitch: pitch, timestamp: timestamp)
+                self?.ingestMotion(orientation: orientation, timestamp: timestamp)
             }
         }
     }
 
-    private func ingestMotion(pitch: Double, timestamp: TimeInterval) {
+    private func ingestMotion(orientation: WristOrientation, timestamp: TimeInterval) {
         guard isRunning else { return }
-        if detector.ingest(pitch: pitch, timestamp: timestamp) {
+        if detector.ingest(orientation: orientation, timestamp: timestamp) {
             repetitions += 1
             WKInterfaceDevice.current().play(.click)
             if repetitions >= plan.targetReps {

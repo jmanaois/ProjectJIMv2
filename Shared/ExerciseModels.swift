@@ -27,9 +27,9 @@ enum ExerciseKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .squat:
             .init(activationRadians: 0.42, returnRadians: 0.18, minimumExcursionDuration: 0.12, minimumRepInterval: 0.35, maximumRepDuration: 5.5)
         case .row:
-            .init(activationRadians: 0.48, returnRadians: 0.25, minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
+            .init(activationRadians: 0.30, returnRadians: 0.15, minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
         case .shoulderPress:
-            .init(activationRadians: 0.52, returnRadians: 0.25, minimumExcursionDuration: 0.08, minimumRepInterval: 0.24, maximumRepDuration: 5.0)
+            .init(activationRadians: 0.32, returnRadians: 0.16, minimumExcursionDuration: 0.08, minimumRepInterval: 0.24, maximumRepDuration: 5.0)
         }
     }
 }

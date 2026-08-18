@@ -19,14 +19,6 @@ struct ContentView: View {
                 historySection
             }
             .navigationTitle("ProjectJIM")
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        isWeightFieldFocused = false
-                    }
-                }
-            }
             .onChange(of: connectivity.latestEvent?.timestamp) { _, _ in saveLatestEventIfNeeded() }
         }
     }
@@ -50,8 +42,15 @@ struct ContentView: View {
                     .multilineTextAlignment(.trailing)
                     .focused($isWeightFieldFocused)
                     .submitLabel(.done)
+                    .frame(width: 80)
                 Text("lb")
                     .foregroundStyle(.secondary)
+                if isWeightFieldFocused {
+                    Button("Done") {
+                        isWeightFieldFocused = false
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
 
             Button("Send Plan to Watch") {

@@ -46,11 +46,15 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
 
     private func receive(_ message: [String: Any]) {
         switch message[ConnectivityKey.messageType] as? String {
-        case ConnectivityKey.setCompleted:
+        case ConnectivityKey.setCompleted, ConnectivityKey.workoutCompleted:
             guard let data = message[ConnectivityKey.eventData] as? Data,
                   let event = try? decoder.decode(SetCompletedEvent.self, from: data) else { return }
             latestEvent = event
-            soundPlayer.playSetCompleteTone()
+            if message[ConnectivityKey.messageType] as? String == ConnectivityKey.workoutCompleted {
+                soundPlayer.playWorkoutCompleteTone()
+            } else {
+                soundPlayer.playSetCompleteTone()
+            }
         case ConnectivityKey.restCompleted:
             soundPlayer.playSetCompleteTone()
         default:

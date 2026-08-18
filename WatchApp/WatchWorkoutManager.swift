@@ -37,6 +37,8 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     private var workoutStartedAt = Date()
     private var setStartedAt = Date()
     private var heartRateSamples: [Double] = []
+    private var latestHeartRateValue: Double?
+    private var latestHeartRateRecordedAt: Date?
     private var activeWorkoutID = UUID()
     private var healthServicesPrepared = false
     private var healthPreparationTask: Task<Void, Error>?
@@ -81,6 +83,9 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             detector = CycleRepDetector(exercise: plan.exercise)
             repetitions = 0
             currentSet = 1
+            heartRate = 0
+            latestHeartRateValue = nil
+            latestHeartRateRecordedAt = nil
             isResting = false
             restSecondsRemaining = 0
             restTask?.cancel()
@@ -141,6 +146,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     func finishCurrentSet() {
         guard isRunning, !isResting, repetitions > 0 else { return }
         let completedAt = Date()
+        let completesWorkout = currentSet >= plan.targetSets
         let event = SetCompletedEvent(
             workoutID: activeWorkoutID,
             exercise: plan.exercise,
@@ -148,16 +154,21 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             repetitions: repetitions,
             weightKilograms: plan.weightKilograms,
             duration: completedAt.timeIntervalSince(setStartedAt),
-            averageHeartRate: heartRateSamples.isEmpty ? nil : heartRateSamples.reduce(0, +) / Double(heartRateSamples.count),
+            averageHeartRate: averageHeartRateForCurrentSet(at: completedAt),
             timestamp: completedAt
         )
-        send(event: event)
-        soundPlayer.playSetCompleteTone(onlyForExternalOutput: true)
-        WKInterfaceDevice.current().play(.success)
+        send(
+            event: event,
+            messageType: completesWorkout ? ConnectivityKey.workoutCompleted : ConnectivityKey.setCompleted
+        )
 
-        if currentSet >= plan.targetSets {
+        if completesWorkout {
+            soundPlayer.playWorkoutCompleteTone(onlyForExternalOutput: true)
+            WKInterfaceDevice.current().play(.success)
             endWorkout()
         } else {
+            soundPlayer.playSetCompleteTone(onlyForExternalOutput: true)
+            WKInterfaceDevice.current().play(.success)
             currentSet += 1
             repetitions = 0
             heartRateSamples.removeAll()
@@ -243,10 +254,10 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         }
     }
 
-    private func send(event: SetCompletedEvent) {
+    private func send(event: SetCompletedEvent, messageType: String) {
         guard let data = try? encoder.encode(event) else { return }
         let message: [String: Any] = [
-            ConnectivityKey.messageType: ConnectivityKey.setCompleted,
+            ConnectivityKey.messageType: messageType,
             ConnectivityKey.eventData: data
         ]
 
@@ -257,6 +268,31 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         } else {
             connectivity?.transferUserInfo(message)
         }
+    }
+
+    private func averageHeartRateForCurrentSet(at completedAt: Date) -> Double? {
+        if !heartRateSamples.isEmpty {
+            return heartRateSamples.reduce(0, +) / Double(heartRateSamples.count)
+        }
+
+        // HealthKit delivery is asynchronous, so a set can end after the live
+        // statistic updates but before its delegate callback reaches this actor.
+        if let liveValue = currentLiveHeartRateValue() {
+            return liveValue
+        }
+
+        guard let latestHeartRateValue,
+              let latestHeartRateRecordedAt else { return nil }
+        let readingAge = completedAt.timeIntervalSince(latestHeartRateRecordedAt)
+        guard (0...20).contains(readingAge) else { return nil }
+        return latestHeartRateValue
+    }
+
+    private func currentLiveHeartRateValue() -> Double? {
+        guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return nil }
+        return workoutBuilder?.statistics(for: heartRateType)?.mostRecentQuantity()?.doubleValue(
+            for: HKUnit.count().unitDivided(by: .minute())
+        )
     }
 
     private func beginRest() {
@@ -380,9 +416,13 @@ extension WatchWorkoutManager: HKLiveWorkoutBuilderDelegate {
               let value = workoutBuilder.statistics(for: heartRateType)?.mostRecentQuantity()?.doubleValue(
                 for: HKUnit.count().unitDivided(by: .minute())
               ) else { return }
+        let recordedAt = Date()
         Task { @MainActor in
+            guard self.isRunning else { return }
             self.heartRate = value
-            if self.isRunning, !self.isResting {
+            self.latestHeartRateValue = value
+            self.latestHeartRateRecordedAt = recordedAt
+            if !self.isResting {
                 self.heartRateSamples.append(value)
             }
         }

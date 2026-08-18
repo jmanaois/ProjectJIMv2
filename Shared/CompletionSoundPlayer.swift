@@ -10,6 +10,14 @@ final class CompletionSoundPlayer {
     private var player: AVAudioPlayer?
 
     func playSetCompleteTone(onlyForExternalOutput: Bool = false) {
+        play(.set, onlyForExternalOutput: onlyForExternalOutput)
+    }
+
+    func playWorkoutCompleteTone(onlyForExternalOutput: Bool = false) {
+        play(.workout, onlyForExternalOutput: onlyForExternalOutput)
+    }
+
+    private func play(_ tone: CompletionTone, onlyForExternalOutput: Bool) {
 #if os(iOS)
         let feedbackGenerator = UINotificationFeedbackGenerator()
         feedbackGenerator.prepare()
@@ -33,7 +41,7 @@ final class CompletionSoundPlayer {
                 return
             }
 
-            player = try AVAudioPlayer(data: Self.makeToneWAV())
+            player = try AVAudioPlayer(data: Self.makeToneWAV(for: tone))
             player?.volume = 1.0
             player?.prepareToPlay()
             player?.play()
@@ -54,16 +62,30 @@ final class CompletionSoundPlayer {
         }
     }
 
-    private static func makeToneWAV() -> Data {
+    private static func makeToneWAV(for tone: CompletionTone) -> Data {
         let sampleRate = 44_100
-        let duration = 0.6
+        let frequencies: [Double]
+        let noteDuration: Double
+
+        switch tone {
+        case .set:
+            frequencies = [659.25, 880.0]
+            noteDuration = 0.3
+        case .workout:
+            frequencies = [523.25, 659.25, 783.99, 1_046.5]
+            noteDuration = 0.24
+        }
+
+        let duration = noteDuration * Double(frequencies.count)
         let sampleCount = Int(Double(sampleRate) * duration)
         var pcm = Data(capacity: sampleCount * 2)
 
         for index in 0..<sampleCount {
             let time = Double(index) / Double(sampleRate)
-            let frequency = time < 0.28 ? 659.25 : 880.0
-            let envelope = min(1, time * 18) * min(1, (duration - time) * 12)
+            let noteIndex = min(Int(time / noteDuration), frequencies.count - 1)
+            let noteTime = time - (Double(noteIndex) * noteDuration)
+            let frequency = frequencies[noteIndex]
+            let envelope = min(1, noteTime * 24) * min(1, (noteDuration - noteTime) * 18)
             let value = Int16(sin(2 * .pi * frequency * time) * envelope * 24_000)
             var littleEndian = value.littleEndian
             withUnsafeBytes(of: &littleEndian) { pcm.append(contentsOf: $0) }
@@ -94,5 +116,10 @@ final class CompletionSoundPlayer {
         appendUInt32(UInt32(pcm.count))
         wav.append(pcm)
         return wav
+    }
+
+    private enum CompletionTone {
+        case set
+        case workout
     }
 }

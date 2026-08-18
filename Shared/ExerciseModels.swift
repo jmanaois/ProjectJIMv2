@@ -161,6 +161,7 @@ enum ConnectivityKey {
     static let eventData = "eventData"
     static let messageType = "messageType"
     static let setCompleted = "setCompleted"
+    static let workoutCompleted = "workoutCompleted"
     static let restCompleted = "restCompleted"
     static let planAccepted = "planAccepted"
 }

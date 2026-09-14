@@ -740,11 +740,11 @@ private struct WorkoutHistoryView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .frame(width: 38, height: 38)
-                        .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 12))
+                    Label("Sort workouts", systemImage: "arrow.up.arrow.down")
+                        .labelStyle(.iconOnly)
                 }
                 .accessibilityLabel("Sort workouts")
+                .accessibilityValue(sortOrder.title)
             }
         }
     }

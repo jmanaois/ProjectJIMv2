@@ -18,7 +18,7 @@ struct WatchRootView: View {
             palette.graphite.ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     exerciseHeader
 
                     if workout.isRunning {
@@ -32,9 +32,11 @@ struct WatchRootView: View {
                         readyView
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 7)
-                .padding(.bottom, 8)
+                .padding(.bottom, 6)
             }
+            .scrollIndicators(.hidden)
         }
         .tint(palette.sand)
         .alert("End workout?", isPresented: $isEndWorkoutConfirmationPresented) {
@@ -60,17 +62,16 @@ struct WatchRootView: View {
     }
 
     private var readyView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: 3) {
+                    VStack(spacing: 4) {
                         workoutSetAndRepSummary
                         workoutWeightSummary
                     }
                 } else {
-                    HStack(alignment: .lastTextBaseline) {
+                    HStack(alignment: .lastTextBaseline, spacing: 10) {
                         workoutSetAndRepSummary
-                        Spacer()
                         workoutWeightSummary
                     }
                 }
@@ -94,6 +95,7 @@ struct WatchRootView: View {
                 .font(.headline)
                 .foregroundStyle(palette.graphite)
                 .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Capsule())
                 .background(palette.sand, in: Capsule())
             }
             .buttonStyle(.plain)
@@ -109,7 +111,7 @@ struct WatchRootView: View {
     }
 
     private var activeSetView: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             VStack(spacing: -2) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(workout.repetitions)")
@@ -162,6 +164,7 @@ struct WatchRootView: View {
                 .font(.headline)
                 .foregroundStyle(palette.graphite)
                 .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Capsule())
                 .background(palette.sand, in: Capsule())
                 .buttonStyle(.plain)
                 .disabled(workout.repetitions == 0)
@@ -170,7 +173,7 @@ struct WatchRootView: View {
     }
 
     private var restView: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: "timer")
                 .font(.title3)
                 .foregroundStyle(palette.sandDark)
@@ -190,6 +193,7 @@ struct WatchRootView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(palette.graphite)
                 .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Capsule())
                 .background(palette.sand, in: Capsule())
                 .buttonStyle(.plain)
         }
@@ -231,6 +235,7 @@ struct WatchRootView: View {
                 .font(.headline)
                 .foregroundStyle(palette.sandLight)
                 .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(RoundedRectangle(cornerRadius: 12))
                 .background(palette.grey, in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)

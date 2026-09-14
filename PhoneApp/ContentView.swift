@@ -511,10 +511,11 @@ private struct WorkoutEffortSheet: View {
                                 .font(.caption2)
                         }
                         .frame(maxWidth: .infinity, minHeight: 58)
+                        .contentShape(RoundedRectangle(cornerRadius: 14))
                         .foregroundStyle(VibratoPalette.graphite)
                         .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 14))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(EffortTileButtonStyle())
                     .accessibilityLabel(value == 4 ? "4 or more reps left" : "\(value) reps left")
                 }
             }
@@ -560,6 +561,7 @@ private struct WorkoutEffortSheet: View {
                         .font(.headline)
                         .foregroundStyle(VibratoPalette.sandLight)
                         .frame(maxWidth: .infinity, minHeight: 52)
+                        .contentShape(RoundedRectangle(cornerRadius: 16))
                         .background(VibratoPalette.graphite, in: RoundedRectangle(cornerRadius: 16))
                 }
                 .buttonStyle(.plain)
@@ -568,12 +570,15 @@ private struct WorkoutEffortSheet: View {
                     .font(.caption)
                     .foregroundStyle(VibratoPalette.muted)
             } else {
-                Button("Done") { dismiss() }
-                    .font(.headline)
-                    .foregroundStyle(VibratoPalette.sandLight)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(VibratoPalette.graphite, in: RoundedRectangle(cornerRadius: 16))
-                    .buttonStyle(.plain)
+                Button { dismiss() } label: {
+                    Text("Done")
+                        .font(.headline)
+                        .foregroundStyle(VibratoPalette.sandLight)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .contentShape(RoundedRectangle(cornerRadius: 16))
+                        .background(VibratoPalette.graphite, in: RoundedRectangle(cornerRadius: 16))
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -584,6 +589,15 @@ private struct WorkoutEffortSheet: View {
         case .maintain: "equal"
         case .decrease: "arrow.down.right"
         }
+    }
+}
+
+private struct EffortTileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

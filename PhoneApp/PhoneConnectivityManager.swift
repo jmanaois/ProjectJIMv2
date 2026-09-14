@@ -46,7 +46,7 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
                     Task { @MainActor in
                         self?.planSendConfirmation = PlanSendConfirmation(
                             title: "Workout Sent",
-                            message: "\(plan.exercise.displayName), \(plan.targetSets) sets of \(plan.targetReps). Rest between sets: \(plan.formattedRestDuration.lowercased())."
+                            message: self?.sentConfirmationMessage(for: plan) ?? "Workout sent to Apple Watch."
                         )
                     }
                 },
@@ -66,6 +66,15 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
             title: "Workout Ready to Sync",
             message: "\(plan.exercise.displayName) will sync when the Watch app is available."
         )
+    }
+
+    private func sentConfirmationMessage(for plan: ExercisePlan) -> String {
+        let setNoun = plan.targetSets == 1 ? "set" : "sets"
+        let repNoun = plan.targetReps == 1 ? "rep" : "reps"
+        let prescription = "\(plan.exercise.displayName): \(plan.targetSets) \(setNoun) of \(plan.targetReps) \(repNoun)."
+
+        guard plan.targetSets > 1 else { return prescription }
+        return "\(prescription) Rest between sets: \(plan.formattedRestDuration.lowercased())."
     }
 
     private func receive(_ message: [String: Any]) {

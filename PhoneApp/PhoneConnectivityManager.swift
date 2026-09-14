@@ -4,12 +4,14 @@ import WatchConnectivity
 
 struct PlanSendConfirmation: Identifiable {
     let id = UUID()
+    let title: String
     let message: String
 }
 
 @MainActor
 final class PhoneConnectivityManager: NSObject, ObservableObject {
     @Published private(set) var latestEvent: SetCompletedEvent?
+    @Published private(set) var completedWorkoutEvent: SetCompletedEvent?
     @Published private(set) var isWatchReachable = false
     @Published var planSendConfirmation: PlanSendConfirmation?
 
@@ -26,7 +28,15 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
 
     func send(plan: ExercisePlan) {
         guard let data = try? encoder.encode(plan) else { return }
-        try? session?.updateApplicationContext([ConnectivityKey.planData: data])
+        do {
+            try session?.updateApplicationContext([ConnectivityKey.planData: data])
+        } catch {
+            planSendConfirmation = PlanSendConfirmation(
+                title: "Couldn’t Save Workout",
+                message: "Try again after your Watch is available."
+            )
+            return
+        }
 
         if session?.isReachable == true {
             session?.sendMessage(
@@ -35,13 +45,27 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
                     guard reply[ConnectivityKey.planAccepted] as? Bool == true else { return }
                     Task { @MainActor in
                         self?.planSendConfirmation = PlanSendConfirmation(
+                            title: "Workout Sent",
                             message: "\(plan.exercise.displayName), \(plan.targetSets) sets of \(plan.targetReps). Rest between sets: \(plan.formattedRestDuration.lowercased())."
                         )
                     }
                 },
-                errorHandler: nil
+                errorHandler: { [weak self] _ in
+                    Task { @MainActor in
+                        self?.showQueuedConfirmation(for: plan)
+                    }
+                }
             )
+        } else {
+            showQueuedConfirmation(for: plan)
         }
+    }
+
+    private func showQueuedConfirmation(for plan: ExercisePlan) {
+        planSendConfirmation = PlanSendConfirmation(
+            title: "Workout Ready to Sync",
+            message: "\(plan.exercise.displayName) will sync when the Watch app is available."
+        )
     }
 
     private func receive(_ message: [String: Any]) {
@@ -51,6 +75,7 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
                   let event = try? decoder.decode(SetCompletedEvent.self, from: data) else { return }
             latestEvent = event
             if message[ConnectivityKey.messageType] as? String == ConnectivityKey.workoutCompleted {
+                completedWorkoutEvent = event
                 soundPlayer.playWorkoutCompleteTone()
             } else {
                 soundPlayer.playSetCompleteTone()

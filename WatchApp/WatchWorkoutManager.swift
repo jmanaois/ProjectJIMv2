@@ -153,6 +153,9 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             setNumber: currentSet,
             repetitions: repetitions,
             weightKilograms: plan.weightKilograms,
+            targetSets: plan.targetSets,
+            targetRepetitions: plan.targetReps,
+            plannedRestDurationSeconds: plan.restDurationSeconds,
             duration: completedAt.timeIntervalSince(setStartedAt),
             averageHeartRate: averageHeartRateForCurrentSet(at: completedAt),
             timestamp: completedAt
@@ -385,9 +388,14 @@ extension WatchWorkoutManager: HKWorkoutSessionDelegate {
         guard toState == .ended else { return }
         Task { @MainActor [weak self] in
             guard let self, let builder = self.workoutBuilder else { return }
-            builder.endCollection(withEnd: date) { _, _ in
-                builder.finishWorkout { _, _ in }
+            do {
+                try await builder.endCollection(at: date)
+                _ = try await builder.finishWorkout()
+            } catch {
+                self.errorMessage = "The workout ended, but HealthKit couldn’t save it."
             }
+            self.workoutBuilder = nil
+            self.workoutSession = nil
         }
     }
 

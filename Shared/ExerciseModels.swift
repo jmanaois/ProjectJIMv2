@@ -151,6 +151,11 @@ struct SetCompletedEvent: Codable, Sendable {
     let setNumber: Int
     let repetitions: Int
     let weightKilograms: Double
+    /// The prescription is included so the phone can judge completion even if
+    /// its editable plan has changed while the Watch workout was running.
+    let targetSets: Int?
+    let targetRepetitions: Int?
+    let plannedRestDurationSeconds: Int?
     let duration: TimeInterval
     let averageHeartRate: Double?
     let timestamp: Date

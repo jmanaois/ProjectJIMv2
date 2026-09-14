@@ -9,6 +9,7 @@ ProjectJIM is a workout-focused app for a paired iPhone and Apple Watch for stre
 - Core Motion sampling and an arm-exercise state-machine rep detector for curls, rows, and shoulder presses
 - WatchConnectivity routine sync and live rep/set events
 - Session-grouped, chronological workout history on iPhone
+- Phone-side post-workout effort check-in with conservative load progression recommendations
 - Generated completion tone with Bluetooth routing and Watch haptic fallback
 - Manual rep correction and explicit set completion
 

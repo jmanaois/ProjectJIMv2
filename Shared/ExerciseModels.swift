@@ -29,7 +29,10 @@ enum ExerciseKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .row:
             .init(signal: .horizontalAcceleration(activationG: 0.08, reversalG: 0.06), minimumExcursionDuration: 0.06, minimumRepInterval: 0.22, maximumRepDuration: 4.5)
         case .shoulderPress:
-            .init(signal: .verticalAcceleration(activationG: 0.07, reversalG: 0.055), minimumExcursionDuration: 0.08, minimumRepInterval: 0.24, maximumRepDuration: 5.0)
+            // Presses generate a three-phase acceleration pattern (drive, brake,
+            // return). Conservative timing prevents wrist bounce while getting
+            // under the weight from looking like several complete repetitions.
+            .init(signal: .verticalAcceleration(activationG: 0.14, reversalG: 0.10), minimumExcursionDuration: 0.24, minimumRepInterval: 1.10, maximumRepDuration: 5.0)
         }
     }
 }
@@ -133,6 +136,26 @@ struct ExercisePlan: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+struct WorkoutRoutine: Codable, Identifiable, Equatable, Sendable {
+    var id: UUID
+    var name: String
+    var exercises: [ExercisePlan]
+
+    init(id: UUID = UUID(), name: String = "Workout", exercises: [ExercisePlan]) {
+        self.id = id
+        self.name = name
+        self.exercises = exercises
+    }
+
+    static func single(_ plan: ExercisePlan) -> WorkoutRoutine {
+        WorkoutRoutine(name: plan.exercise.displayName, exercises: [plan])
+    }
+
+    var totalTargetSets: Int {
+        exercises.reduce(0) { $0 + $1.targetSets }
+    }
+}
+
 enum WeightConversion {
     static let poundsPerKilogram = 2.204_622_621_8
 
@@ -163,6 +186,7 @@ struct SetCompletedEvent: Codable, Sendable {
 
 enum ConnectivityKey {
     static let planData = "planData"
+    static let routineData = "routineData"
     static let eventData = "eventData"
     static let messageType = "messageType"
     static let setCompleted = "setCompleted"

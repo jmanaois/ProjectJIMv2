@@ -8,12 +8,15 @@ import WatchKit
 @MainActor
 final class WatchWorkoutManager: NSObject, ObservableObject {
     @Published private(set) var plan = ExercisePlan.sample
+    @Published private(set) var routine = WorkoutRoutine.single(.sample)
+    @Published private(set) var currentExerciseIndex = 0
     @Published private(set) var repetitions = 0
     @Published private(set) var currentSet = 1
     @Published private(set) var heartRate = 0.0
     @Published private(set) var isRunning = false
     @Published private(set) var isStarting = false
     @Published private(set) var isResting = false
+    @Published private(set) var isAwaitingExerciseStart = false
     @Published private(set) var restSecondsRemaining = 0
     @Published private(set) var isDetectorCalibrated = false
     @Published private(set) var errorMessage: String?
@@ -43,6 +46,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     private var healthServicesPrepared = false
     private var healthPreparationTask: Task<Void, Error>?
     private var restTask: Task<Void, Never>?
+    private var detectionEnabledAt = Date.distantPast
 
     override init() {
         super.init()
@@ -78,6 +82,8 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             workoutSession = session
             workoutBuilder = builder
             activeWorkoutID = UUID()
+            currentExerciseIndex = 0
+            plan = routine.exercises.first ?? .sample
             workoutStartedAt = Date()
             setStartedAt = workoutStartedAt
             detector = CycleRepDetector(exercise: plan.exercise)
@@ -87,10 +93,12 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             latestHeartRateValue = nil
             latestHeartRateRecordedAt = nil
             isResting = false
+            isAwaitingExerciseStart = false
             restSecondsRemaining = 0
             restTask?.cancel()
             restTask = nil
             heartRateSamples.removeAll()
+            detectionEnabledAt = Date().addingTimeInterval(0.5)
 
             session.startActivity(with: workoutStartedAt)
             isRunning = true
@@ -139,14 +147,15 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     }
 
     func adjustRepetitions(by amount: Int) {
-        guard isRunning, !isResting else { return }
+        guard isRunning, !isResting, !isAwaitingExerciseStart else { return }
         repetitions = max(0, repetitions + amount)
     }
 
     func finishCurrentSet() {
-        guard isRunning, !isResting, repetitions > 0 else { return }
+        guard isRunning, !isResting, !isAwaitingExerciseStart, repetitions > 0 else { return }
         let completedAt = Date()
-        let completesWorkout = currentSet >= plan.targetSets
+        let completesExercise = currentSet >= plan.targetSets
+        let completesWorkout = completesExercise && currentExerciseIndex >= routine.exercises.count - 1
         let event = SetCompletedEvent(
             workoutID: activeWorkoutID,
             exercise: plan.exercise,
@@ -169,6 +178,18 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
             soundPlayer.playWorkoutCompleteTone(onlyForExternalOutput: true)
             WKInterfaceDevice.current().play(.success)
             endWorkout()
+        } else if completesExercise {
+            let transitionRestDuration = plan.restDurationSeconds
+            soundPlayer.playSetCompleteTone(onlyForExternalOutput: true)
+            WKInterfaceDevice.current().play(.success)
+            currentExerciseIndex += 1
+            plan = routine.exercises[currentExerciseIndex]
+            currentSet = 1
+            repetitions = 0
+            heartRateSamples.removeAll()
+            isDetectorCalibrated = false
+            isAwaitingExerciseStart = true
+            beginRest(duration: transitionRestDuration)
         } else {
             soundPlayer.playSetCompleteTone(onlyForExternalOutput: true)
             WKInterfaceDevice.current().play(.success)
@@ -185,11 +206,25 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         completeRest(shouldNotify: false)
     }
 
+    func startCurrentExercise() {
+        guard isRunning, !isResting, isAwaitingExerciseStart else { return }
+        isAwaitingExerciseStart = false
+        setStartedAt = Date()
+        repetitions = 0
+        heartRateSamples.removeAll()
+        detector = CycleRepDetector(exercise: plan.exercise)
+        isDetectorCalibrated = false
+        // Ignore the Watch-tap and weight repositioning before collecting a neutral pose.
+        detectionEnabledAt = Date().addingTimeInterval(0.5)
+        WKInterfaceDevice.current().play(.start)
+    }
+
     func endWorkout() {
         guard isRunning else { return }
         restTask?.cancel()
         restTask = nil
         isResting = false
+        isAwaitingExerciseStart = false
         restSecondsRemaining = 0
         motionManager.stopDeviceMotionUpdates()
         workoutSession?.end()
@@ -243,7 +278,10 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
     }
 
     private func ingestMotion(sample: RepMotionSample, timestamp: TimeInterval) {
-        guard isRunning, !isResting else { return }
+        guard isRunning,
+              !isResting,
+              !isAwaitingExerciseStart,
+              Date() >= detectionEnabledAt else { return }
         if detector.ingest(sample: sample, timestamp: timestamp) {
             repetitions += 1
             WKInterfaceDevice.current().play(.click)
@@ -298,8 +336,8 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         )
     }
 
-    private func beginRest() {
-        let duration = max(0, plan.restDurationSeconds)
+    private func beginRest(duration requestedDuration: Int? = nil) {
+        let duration = max(0, requestedDuration ?? plan.restDurationSeconds)
         guard duration > 0 else {
             prepareNextSet()
             return
@@ -350,6 +388,7 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
         heartRateSamples.removeAll()
         detector = CycleRepDetector(exercise: plan.exercise)
         isDetectorCalibrated = false
+        detectionEnabledAt = isAwaitingExerciseStart ? .distantFuture : Date()
     }
 
     private func sendRestCompleted() {
@@ -363,12 +402,27 @@ final class WatchWorkoutManager: NSObject, ObservableObject {
 
     @discardableResult
     private func receivePlan(from message: [String: Any]) -> Bool {
-        guard !isRunning,
-              let data = message[ConnectivityKey.planData] as? Data,
-              let receivedPlan = try? decoder.decode(ExercisePlan.self, from: data),
-              ExerciseKind.armExercises.contains(receivedPlan.exercise) else { return false }
-        plan = receivedPlan
-        detector = CycleRepDetector(exercise: receivedPlan.exercise)
+        guard !isRunning else { return false }
+
+        let receivedRoutine: WorkoutRoutine?
+        if let data = message[ConnectivityKey.routineData] as? Data {
+            receivedRoutine = try? decoder.decode(WorkoutRoutine.self, from: data)
+        } else if let data = message[ConnectivityKey.planData] as? Data,
+                  let receivedPlan = try? decoder.decode(ExercisePlan.self, from: data) {
+            receivedRoutine = .single(receivedPlan)
+        } else {
+            receivedRoutine = nil
+        }
+
+        guard let receivedRoutine,
+              !receivedRoutine.exercises.isEmpty,
+              receivedRoutine.exercises.allSatisfy({ ExerciseKind.armExercises.contains($0.exercise) }) else {
+            return false
+        }
+        routine = receivedRoutine
+        currentExerciseIndex = 0
+        plan = receivedRoutine.exercises[0]
+        detector = CycleRepDetector(exercise: plan.exercise)
         return true
     }
 

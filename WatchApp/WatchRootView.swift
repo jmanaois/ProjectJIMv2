@@ -24,6 +24,8 @@ struct WatchRootView: View {
                     if workout.isRunning {
                         if workout.isResting {
                             restView
+                        } else if workout.isAwaitingExerciseStart {
+                            nextExerciseReadyView
                         } else {
                             activeSetView
                         }
@@ -57,6 +59,11 @@ struct WatchRootView: View {
                 .font(.headline)
                 .foregroundStyle(palette.sandLight)
                 .multilineTextAlignment(.center)
+            if workout.routine.exercises.count > 1 {
+                Text("EXERCISE \(workout.currentExerciseIndex + 1) OF \(workout.routine.exercises.count)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(palette.sandDark)
+            }
         }
         .padding(.top, 2)
     }
@@ -83,6 +90,12 @@ struct WatchRootView: View {
             }
             .font(.caption2.weight(.medium))
             .foregroundStyle(palette.sandDark)
+
+            if workout.routine.exercises.count > 1 {
+                Text("\(workout.routine.totalTargetSets) total sets")
+                    .font(.caption2)
+                    .foregroundStyle(palette.sandDark)
+            }
 
             Button {
                 Task { await workout.startWorkout() }
@@ -170,6 +183,32 @@ struct WatchRootView: View {
                 .disabled(workout.repetitions == 0)
                 .opacity(workout.repetitions == 0 ? 0.45 : 1)
         }
+    }
+
+    private var nextExerciseReadyView: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "figure.strengthtraining.traditional")
+                .font(.title2)
+                .foregroundStyle(palette.sandDark)
+
+            Text("Get into position")
+                .font(.headline)
+                .foregroundStyle(palette.sandLight)
+
+            Text("Rep counting stays paused until you’re ready.")
+                .font(.caption2)
+                .foregroundStyle(palette.sandDark)
+                .multilineTextAlignment(.center)
+
+            Button("Start Exercise") { workout.startCurrentExercise() }
+                .font(.headline)
+                .foregroundStyle(palette.graphite)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Capsule())
+                .background(palette.sand, in: Capsule())
+                .buttonStyle(.plain)
+        }
+        .padding(.vertical, 4)
     }
 
     private var restView: some View {

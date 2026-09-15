@@ -49,6 +49,7 @@ struct CycleRepDetector: Sendable {
         case calibrating
         case ready
         case angularAway(startedAt: TimeInterval)
+        case translationCandidate(startedAt: TimeInterval, direction: MotionVector)
         case translatingOut(startedAt: TimeInterval, direction: MotionVector)
         case translatingBack(startedAt: TimeInterval, direction: MotionVector)
     }
@@ -108,8 +109,18 @@ struct CycleRepDetector: Sendable {
                  .horizontalAcceleration(let activationG, _):
                 let signal = translationSignal(for: sample)
                 guard signal.magnitude >= activationG else { return false }
-                phase = .translatingOut(startedAt: timestamp, direction: signal.normalized)
+                phase = .translationCandidate(startedAt: timestamp, direction: signal.normalized)
             }
+            return false
+
+        case .translationCandidate(let startedAt, let direction):
+            let signal = translationSignal(for: sample)
+            guard signal.dot(direction) >= translationActivationThreshold else {
+                phase = .ready
+                return false
+            }
+            guard timestamp - startedAt >= requiredTranslationActivationDuration else { return false }
+            phase = .translatingOut(startedAt: startedAt, direction: direction)
             return false
 
         case .angularAway(let startedAt):
@@ -207,6 +218,10 @@ struct CycleRepDetector: Sendable {
              .horizontalAcceleration(_, let reversalG): reversalG
         case .pitch: .infinity
         }
+    }
+
+    private var requiredTranslationActivationDuration: TimeInterval {
+        exercise == .shoulderPress ? 0.08 : 0.04
     }
 
     private mutating func completeRep(at timestamp: TimeInterval) -> Bool {

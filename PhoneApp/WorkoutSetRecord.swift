@@ -54,7 +54,44 @@ struct WorkoutSummary: Identifiable {
     let sets: [WorkoutSetRecord]
 
     var exerciseName: String {
-        sets.first?.exerciseName ?? "Workout"
+        let names = orderedExerciseRawValues.compactMap { rawValue in
+            sets.first(where: { $0.exerciseRawValue == rawValue })?.exerciseName
+        }
+        return names.count > 1 ? "\(names.count)-Exercise Routine" : (names.first ?? "Workout")
+    }
+
+    var orderedExerciseRawValues: [String] {
+        sets.sorted { $0.timestamp < $1.timestamp }.reduce(into: []) { result, set in
+            if !result.contains(set.exerciseRawValue) { result.append(set.exerciseRawValue) }
+        }
+    }
+
+    var repeatedRoutine: WorkoutRoutine? {
+        let chronologicalSets = sets.sorted { $0.timestamp < $1.timestamp }
+        let exerciseBlocks = chronologicalSets.reduce(into: [[WorkoutSetRecord]]()) { blocks, set in
+            guard let lastSet = blocks.last?.last,
+                  lastSet.exerciseRawValue == set.exerciseRawValue,
+                  set.setNumber > lastSet.setNumber else {
+                blocks.append([set])
+                return
+            }
+            blocks[blocks.count - 1].append(set)
+        }
+        let plans = exerciseBlocks.compactMap { exerciseSets -> ExercisePlan? in
+            guard let first = exerciseSets.first,
+                  let exercise = ExerciseKind(rawValue: first.exerciseRawValue) else { return nil }
+            return ExercisePlan(
+                exercise: exercise,
+                targetSets: exerciseSets.compactMap(\.targetSets).last ?? exerciseSets.count,
+                targetReps: exerciseSets.compactMap(\.targetRepetitions).last
+                    ?? exerciseSets.map(\.repetitions).max() ?? first.repetitions,
+                weightKilograms: first.weightKilograms,
+                restDurationSeconds: exerciseSets.compactMap(\.plannedRestDurationSeconds).last ?? 60
+            )
+        }
+        guard !plans.isEmpty else { return nil }
+        let name = plans.count == 1 ? plans[0].exercise.displayName : "Repeated Routine"
+        return WorkoutRoutine(name: name, exercises: plans)
     }
 
     var completedAt: Date {
@@ -128,15 +165,18 @@ enum AdaptiveProgressionEngine {
     ) -> ProgressionRecommendation? {
         let workouts = WorkoutHistoryGrouping.workouts(from: records)
             .sorted { $0.completedAt > $1.completedAt }
-        guard let current = workouts.first(where: { $0.sets.first?.workoutID == workoutID }),
-              let exerciseRawValue = current.sets.first?.exerciseRawValue,
-              let exercise = ExerciseKind(rawValue: exerciseRawValue),
+        guard let wholeWorkout = workouts.first(where: { $0.sets.first?.workoutID == workoutID }),
+              let effortSet = wholeWorkout.sets.first(where: { $0.repsInReserve != nil }),
+              let exercise = ExerciseKind(rawValue: effortSet.exerciseRawValue),
+              let current = exerciseSummary(from: wholeWorkout, exerciseRawValue: effortSet.exerciseRawValue),
               let currentRIR = current.repsInReserve,
               let currentWeight = current.weightPounds else { return nil }
 
-        let previousComparable = workouts.first { candidate in
+        let comparableExerciseWorkouts = workouts.compactMap {
+            exerciseSummary(from: $0, exerciseRawValue: effortSet.exerciseRawValue)
+        }
+        let previousComparable = comparableExerciseWorkouts.first { candidate in
             candidate.id != current.id
-                && candidate.sets.first?.exerciseRawValue == exerciseRawValue
                 && candidate.repsInReserve != nil
                 && candidate.wasCompletedAsPrescribed
                 && current.wasCompletedAsPrescribed
@@ -193,6 +233,15 @@ enum AdaptiveProgressionEngine {
             workout: current,
             exercise: exercise
         )
+    }
+
+    private static func exerciseSummary(
+        from workout: WorkoutSummary,
+        exerciseRawValue: String
+    ) -> WorkoutSummary? {
+        let sets = workout.sets.filter { $0.exerciseRawValue == exerciseRawValue }
+        guard !sets.isEmpty else { return nil }
+        return WorkoutSummary(id: workout.id, sets: sets)
     }
 
     private static func makeRecommendation(
@@ -265,11 +314,40 @@ enum WorkoutHistoryGrouping {
     private static func makeSummary(id: String, sets: [WorkoutSetRecord]) -> WorkoutSummary {
         WorkoutSummary(
             id: id,
-            sets: sets.sorted {
-                if $0.setNumber == $1.setNumber { return $0.timestamp < $1.timestamp }
-                return $0.setNumber < $1.setNumber
-            }
+            sets: sets.sorted { $0.timestamp < $1.timestamp }
         )
+    }
+}
+
+struct ExercisePersonalRecord: Identifiable {
+    let exercise: ExerciseKind
+    let heaviestWeightPounds: Double
+    let mostRepetitions: Int
+    let estimatedOneRepMaxPounds: Double
+    let achievedAt: Date
+
+    var id: ExerciseKind { exercise }
+}
+
+enum PersonalRecordEngine {
+    static func records(from sets: [WorkoutSetRecord]) -> [ExercisePersonalRecord] {
+        Dictionary(grouping: sets) { $0.exerciseRawValue }.compactMap { rawValue, exerciseSets in
+            guard let exercise = ExerciseKind(rawValue: rawValue),
+                  let bestEstimatedSet = exerciseSets.max(by: {
+                      estimatedOneRepMax(for: $0) < estimatedOneRepMax(for: $1)
+                  }) else { return nil }
+            return ExercisePersonalRecord(
+                exercise: exercise,
+                heaviestWeightPounds: exerciseSets.map(\.weightPounds).max() ?? 0,
+                mostRepetitions: exerciseSets.map(\.repetitions).max() ?? 0,
+                estimatedOneRepMaxPounds: estimatedOneRepMax(for: bestEstimatedSet),
+                achievedAt: bestEstimatedSet.timestamp
+            )
+        }.sorted { $0.exercise.displayName < $1.exercise.displayName }
+    }
+
+    private static func estimatedOneRepMax(for set: WorkoutSetRecord) -> Double {
+        set.weightPounds * (1 + Double(set.repetitions) / 30)
     }
 }
 
@@ -296,11 +374,11 @@ final class WorkoutHistoryStore: ObservableObject {
         persist()
     }
 
-    func recordEffort(repsInReserve: Int, for workoutID: UUID) {
-        let indices = records.indices.filter { records[$0].workoutID == workoutID }
-        guard let finalSetIndex = indices.max(by: {
-            records[$0].setNumber < records[$1].setNumber
-        }) else { return }
+    func recordEffort(repsInReserve: Int, for workoutID: UUID, exercise: ExerciseKind) {
+        let indices = records.indices.filter {
+            records[$0].workoutID == workoutID && records[$0].exerciseRawValue == exercise.rawValue
+        }
+        guard let finalSetIndex = indices.max(by: { records[$0].timestamp < records[$1].timestamp }) else { return }
         records[finalSetIndex].repsInReserve = min(max(0, repsInReserve), 4)
         persist()
     }

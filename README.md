@@ -12,6 +12,9 @@ ProjectJIM is a workout-focused app for a paired iPhone and Apple Watch for stre
 - Phone-side post-workout effort check-in with conservative load progression recommendations
 - Generated completion tone with Bluetooth routing and Watch haptic fallback
 - Manual rep correction and explicit set completion
+- Persistent multi-exercise routine builder with Watch-side exercise advancement
+- One-tap repeat of the latest workout, including its exercise order and prescriptions
+- Per-exercise personal records for load, repetitions, and estimated one-rep max
 
 ## Run
 

@@ -15,6 +15,8 @@ struct ContentView: View {
     @State private var feedbackPrompt: WorkoutFeedbackPrompt?
     @State private var skippedFeedbackWorkoutIDs: Set<UUID> = []
     @State private var isWorkoutOptionsExpanded = false
+    @State private var activeRoutine: WorkoutRoutine?
+    @State private var isRoutineBuilderPresented = false
     @State private var selectedTab: AppTab = .home
     @AppStorage("gymRepCoach.progressionIncrementPounds") private var progressionIncrementPounds = 5.0
     @FocusState private var isWeightFieldFocused: Bool
@@ -25,7 +27,11 @@ struct ContentView: View {
                 ScrollView {
                     VStack(spacing: 18) {
                         pageHeader
-                        planCard
+                        if activeRoutine == nil {
+                            planCard
+                        } else {
+                            routinePlanCard
+                        }
                         recentWorkoutsCard
                     }
                     .padding(.horizontal, 18)
@@ -56,7 +62,18 @@ struct ContentView: View {
         .onChange(of: connectivity.completedWorkoutEvent?.timestamp) { _, _ in
             presentFeedbackForCompletedWorkout()
         }
-        .onAppear { presentFeedbackForCompletedWorkout() }
+        .onAppear {
+            restoreActiveRoutine()
+            presentFeedbackForCompletedWorkout()
+        }
+        .sheet(isPresented: $isRoutineBuilderPresented) {
+            RoutineBuilderSheet(
+                initialPlans: activeRoutine?.exercises ?? currentPlan.map { [$0] } ?? [],
+                initialName: activeRoutine?.name
+            ) { routine in
+                setActiveRoutine(routine)
+            }
+        }
         .sheet(item: $feedbackPrompt) { prompt in
             WorkoutEffortSheet(
                 event: prompt.event,
@@ -90,38 +107,47 @@ struct ContentView: View {
                 .tracking(1.8)
                 .foregroundStyle(VibratoPalette.muted)
 
-            Menu {
-                Picker("Exercise", selection: $exercise) {
-                    ForEach(ExerciseKind.armExercises) { kind in
-                        Text(kind.displayName).tag(kind)
+            if let activeRoutine {
+                Text(activeRoutine.name)
+                    .font(.system(.largeTitle, design: .default, weight: .bold))
+                    .foregroundStyle(VibratoPalette.graphite)
+                Text("\(activeRoutine.exercises.count) exercises · \(activeRoutine.totalTargetSets) total sets")
+                    .font(.subheadline)
+                    .foregroundStyle(VibratoPalette.muted)
+            } else {
+                Menu {
+                    Picker("Exercise", selection: $exercise) {
+                        ForEach(ExerciseKind.armExercises) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
                     }
-                }
-            } label: {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        exerciseTitle
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(VibratoPalette.muted)
-                        Spacer()
-                    }
+                } label: {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            exerciseTitle
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(VibratoPalette.muted)
+                            Spacer()
+                        }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        exerciseTitle
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(VibratoPalette.muted)
+                        VStack(alignment: .leading, spacing: 6) {
+                            exerciseTitle
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(VibratoPalette.muted)
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel("Exercise, \(exercise.displayName)")
+                .accessibilityHint("Choose a different exercise")
+
+                Text(planSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(VibratoPalette.muted)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Exercise, \(exercise.displayName)")
-            .accessibilityHint("Choose a different exercise")
-
-            Text(planSummary)
-                .font(.subheadline)
-                .foregroundStyle(VibratoPalette.muted)
 
             VibratoResonanceRule()
                 .padding(.top, 2)
@@ -148,6 +174,18 @@ struct ContentView: View {
             .padding(.bottom, 16)
 
             Divider().overlay(VibratoPalette.line)
+
+            Button {
+                isWeightFieldFocused = false
+                isRoutineBuilderPresented = true
+            } label: {
+                Label("Build a Routine", systemImage: "list.bullet.rectangle")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 16)
 
             VStack(alignment: .leading, spacing: 8) {
                 Group {
@@ -222,10 +260,12 @@ struct ContentView: View {
                 guard let currentPlan else { return }
                 connectivity.send(plan: currentPlan)
             } label: {
-                HStack {
+                ZStack {
                     Text("Send to Watch")
-                    Spacer()
-                    Image(systemName: "arrow.right")
+                    HStack {
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                    }
                 }
                 .font(.headline)
                 .foregroundStyle(VibratoPalette.sandLight)
@@ -239,6 +279,68 @@ struct ContentView: View {
 
             watchStatusLine
                 .padding(.top, 13)
+        }
+        .foregroundStyle(VibratoPalette.graphite)
+        .padding(20)
+        .vibratoSurface(cornerRadius: 20)
+    }
+
+    private var routinePlanCard: some View {
+        VStack(spacing: 0) {
+            if let activeRoutine {
+                ForEach(Array(activeRoutine.exercises.enumerated()), id: \.element.id) { index, plan in
+                    if index > 0 { Divider().overlay(VibratoPalette.line) }
+                    HStack(spacing: 12) {
+                        Text("\(index + 1)")
+                            .font(.caption.bold())
+                            .frame(width: 28, height: 28)
+                            .background(VibratoPalette.sand, in: Circle())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(plan.exercise.displayName).font(.headline)
+                            Text("\(plan.targetSets) × \(plan.targetReps) · \(plan.weightPounds.formatted(.number.precision(.fractionLength(1)))) lb")
+                                .font(.caption).foregroundStyle(VibratoPalette.muted)
+                        }
+                        Spacer()
+                        Text(plan.formattedRestDuration)
+                            .font(.caption2).foregroundStyle(VibratoPalette.muted)
+                    }
+                    .padding(.vertical, 12)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button("Edit Routine") { isRoutineBuilderPresented = true }
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 12))
+                Button("Use Single") { clearActiveRoutine() }
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .overlay { RoundedRectangle(cornerRadius: 12).stroke(VibratoPalette.line) }
+            }
+            .font(.subheadline.weight(.semibold))
+            .buttonStyle(.plain)
+            .padding(.top, 16)
+
+            Button {
+                guard let activeRoutine else { return }
+                connectivity.send(routine: activeRoutine)
+            } label: {
+                ZStack {
+                    Text("Send Routine to Watch")
+                    HStack {
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                    }
+                }
+                .font(.headline)
+                .foregroundStyle(VibratoPalette.sandLight)
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background(VibratoPalette.graphite, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 12)
+
+            watchStatusLine.padding(.top, 13)
         }
         .foregroundStyle(VibratoPalette.graphite)
         .padding(20)
@@ -346,6 +448,23 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 20)
             } else {
+                if let latestRoutine = workouts.first?.repeatedRoutine {
+                    Button {
+                        setActiveRoutine(latestRoutine)
+                        connectivity.send(routine: latestRoutine)
+                    } label: {
+                        HStack {
+                            Label("Repeat Last Workout", systemImage: "arrow.clockwise")
+                            Spacer()
+                            Image(systemName: "applewatch")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
                 VStack(spacing: 0) {
                     ForEach(Array(workouts.prefix(3).enumerated()), id: \.element.id) { index, workout in
                         if index > 0 { Divider().overlay(VibratoPalette.line) }
@@ -412,7 +531,7 @@ struct ContentView: View {
         for event: SetCompletedEvent
     ) -> ProgressionRecommendation? {
         guard let workoutID = event.workoutID else { return nil }
-        history.recordEffort(repsInReserve: repsInReserve, for: workoutID)
+        history.recordEffort(repsInReserve: repsInReserve, for: workoutID, exercise: event.exercise)
         return AdaptiveProgressionEngine.recommendation(
             for: workoutID,
             in: history.records,
@@ -427,6 +546,27 @@ struct ContentView: View {
         if let sets = recommendation.targetSets { targetSets = sets }
         if let reps = recommendation.targetRepetitions { targetReps = reps }
         if let rest = recommendation.restDurationSeconds { restDurationSeconds = rest }
+        clearActiveRoutine()
+    }
+
+    private func setActiveRoutine(_ routine: WorkoutRoutine) {
+        activeRoutine = routine
+        if let data = try? JSONEncoder().encode(routine) {
+            UserDefaults.standard.set(data, forKey: "gymRepCoach.activeRoutine.v1")
+        }
+    }
+
+    private func clearActiveRoutine() {
+        activeRoutine = nil
+        UserDefaults.standard.removeObject(forKey: "gymRepCoach.activeRoutine.v1")
+    }
+
+    private func restoreActiveRoutine() {
+        guard activeRoutine == nil,
+              let data = UserDefaults.standard.data(forKey: "gymRepCoach.activeRoutine.v1"),
+              let routine = try? JSONDecoder().decode(WorkoutRoutine.self, from: data),
+              !routine.exercises.isEmpty else { return }
+        activeRoutine = routine
     }
 }
 
@@ -722,6 +862,10 @@ private struct WorkoutHistoryView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
+                if !personalRecords.isEmpty {
+                    PersonalRecordsSection(records: personalRecords)
+                }
+
                 if workouts.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "waveform.path")
@@ -767,6 +911,50 @@ private struct WorkoutHistoryView: View {
         WorkoutHistoryGrouping.workouts(from: history.records).sorted {
             sortOrder == .newestFirst ? $0.completedAt > $1.completedAt : $0.completedAt < $1.completedAt
         }
+    }
+
+    private var personalRecords: [ExercisePersonalRecord] {
+        PersonalRecordEngine.records(from: history.records)
+    }
+}
+
+private struct PersonalRecordsSection: View {
+    let records: [ExercisePersonalRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Personal Records", systemImage: "trophy.fill")
+                    .font(.title3.bold())
+                Spacer()
+                Text("Estimated 1RM")
+                    .font(.caption)
+                    .foregroundStyle(VibratoPalette.muted)
+            }
+
+            ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                if index > 0 { Divider().overlay(VibratoPalette.line) }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(record.exercise.displayName).font(.headline)
+                        Spacer()
+                        Text("\(record.estimatedOneRepMaxPounds.formatted(.number.precision(.fractionLength(1)))) lb")
+                            .font(.system(.title3, design: .rounded, weight: .bold))
+                            .monospacedDigit()
+                    }
+                    HStack {
+                        Label("Heaviest \(record.heaviestWeightPounds.formatted(.number.precision(.fractionLength(1)))) lb", systemImage: "scalemass")
+                        Spacer()
+                        Label("Best set \(record.mostRepetitions) reps", systemImage: "repeat")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(VibratoPalette.muted)
+                }
+            }
+        }
+        .foregroundStyle(VibratoPalette.graphite)
+        .padding(18)
+        .vibratoSurface(cornerRadius: 20)
     }
 }
 
@@ -876,7 +1064,7 @@ private struct WorkoutSetLine: View {
 
     private var setIdentity: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("Set \(record.setNumber)").font(.subheadline.weight(.semibold))
+            Text("\(record.exerciseName) · Set \(record.setNumber)").font(.subheadline.weight(.semibold))
             Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                 .font(.caption2).foregroundStyle(VibratoPalette.muted)
         }
@@ -904,7 +1092,7 @@ private enum WorkoutSortOrder: String, CaseIterable, Identifiable {
     var systemImage: String { self == .newestFirst ? "arrow.down" : "arrow.up" }
 }
 
-private enum VibratoPalette {
+enum VibratoPalette {
     static let canvas = adaptive(
         light: rgb(0.91, 0.89, 0.84), dark: rgb(0.11, 0.12, 0.11),
         increasedLight: rgb(0.96, 0.94, 0.89), increasedDark: rgb(0.05, 0.06, 0.05)
@@ -967,7 +1155,7 @@ private enum VibratoPalette {
     }
 }
 
-private extension View {
+extension View {
     func vibratoSurface(cornerRadius: CGFloat) -> some View {
         background(VibratoPalette.surface, in: RoundedRectangle(cornerRadius: cornerRadius))
             .overlay {

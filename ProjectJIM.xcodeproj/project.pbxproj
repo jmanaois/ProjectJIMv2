@@ -23,6 +23,7 @@
 		A1000000000000000000000E /* CompletionSoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* CompletionSoundPlayer.swift */; };
 		A1000000000000000000000F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* Assets.xcassets */; };
 		A10000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* Assets.xcassets */; };
+		A10000000000000000000011 /* RoutineBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* RoutineBuilderView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +70,7 @@
 		A20000000000000000000011 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		A20000000000000000000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000000000000000000013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000014 /* RoutineBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineBuilderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,6 +120,7 @@
 				A20000000000000000000002 /* ContentView.swift */,
 				A20000000000000000000003 /* WorkoutSetRecord.swift */,
 				A20000000000000000000004 /* PhoneConnectivityManager.swift */,
+				A20000000000000000000014 /* RoutineBuilderView.swift */,
 				A2000000000000000000000D /* Info.plist */,
 				A2000000000000000000000E /* GymRepCoach.entitlements */,
 			);
@@ -253,6 +256,7 @@
 				A10000000000000000000005 /* CompletionSoundPlayer.swift in Sources */,
 				A10000000000000000000006 /* ExerciseModels.swift in Sources */,
 				A10000000000000000000007 /* CycleRepDetector.swift in Sources */,
+				A10000000000000000000011 /* RoutineBuilderView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

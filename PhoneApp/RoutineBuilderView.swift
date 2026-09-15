@@ -4,6 +4,7 @@ struct RoutineBuilderSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var drafts: [RoutineExerciseDraft]
+    @FocusState private var isWeightFieldFocused: Bool
     let onSave: (WorkoutRoutine) -> Void
 
     init(
@@ -84,6 +85,10 @@ struct RoutineBuilderSheet: View {
                         .fontWeight(.semibold)
                         .disabled(!isValid)
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isWeightFieldFocused = false }
+                }
             }
         }
         .tint(VibratoPalette.graphite)
@@ -122,7 +127,10 @@ struct RoutineBuilderSheet: View {
                 .accessibilityLabel("Remove \(drafts[index].exercise.displayName)")
             }
 
-            RoutineExerciseEditor(draft: $drafts[index])
+            RoutineExerciseEditor(
+                draft: $drafts[index],
+                isWeightFieldFocused: $isWeightFieldFocused
+            )
 
             Divider().overlay(VibratoPalette.line)
 
@@ -227,6 +235,7 @@ private struct RoutineExerciseDraft: Identifiable {
 
 private struct RoutineExerciseEditor: View {
     @Binding var draft: RoutineExerciseDraft
+    var isWeightFieldFocused: FocusState<Bool>.Binding
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -247,6 +256,7 @@ private struct RoutineExerciseEditor: View {
                 Spacer()
                 TextField("0", value: $draft.weightPounds, format: .number.precision(.fractionLength(1)))
                     .keyboardType(.decimalPad)
+                    .focused(isWeightFieldFocused)
                     .multilineTextAlignment(.trailing)
                     .font(.system(.body, design: .rounded, weight: .bold))
                     .padding(.horizontal, 10)
@@ -289,27 +299,50 @@ private struct RoutineExerciseEditor: View {
                 .foregroundStyle(VibratoPalette.muted)
             HStack(spacing: 8) {
                 Button {
-                    value.wrappedValue = max(range.lowerBound, value.wrappedValue - 1)
+                    guard value.wrappedValue > range.lowerBound else { return }
+                    value.wrappedValue -= 1
                 } label: {
-                    Image(systemName: "minus").frame(width: 38, height: 38)
+                    Image(systemName: "minus")
+                        .font(.caption.bold())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                        .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 10))
                 }
-                .disabled(value.wrappedValue == range.lowerBound)
+                .buttonStyle(RoutineCounterButtonStyle())
+                .disabled(value.wrappedValue <= range.lowerBound)
+                .opacity(value.wrappedValue <= range.lowerBound ? 0.35 : 1)
+                .accessibilityLabel("Decrease \(title.lowercased())")
 
                 Text("\(value.wrappedValue)")
                     .font(.system(.title3, design: .rounded, weight: .bold))
                     .monospacedDigit()
-                    .frame(minWidth: 26)
+                    .frame(width: 30)
 
                 Button {
-                    value.wrappedValue = min(range.upperBound, value.wrappedValue + 1)
+                    guard value.wrappedValue < range.upperBound else { return }
+                    value.wrappedValue += 1
                 } label: {
-                    Image(systemName: "plus").frame(width: 38, height: 38)
+                    Image(systemName: "plus")
+                        .font(.caption.bold())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                        .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 10))
                 }
-                .disabled(value.wrappedValue == range.upperBound)
+                .buttonStyle(RoutineCounterButtonStyle())
+                .disabled(value.wrappedValue >= range.upperBound)
+                .opacity(value.wrappedValue >= range.upperBound ? 0.35 : 1)
+                .accessibilityLabel("Increase \(title.lowercased())")
             }
-            .background(VibratoPalette.sand, in: RoundedRectangle(cornerRadius: 10))
         }
         .frame(maxWidth: .infinity)
-        .buttonStyle(.plain)
+    }
+}
+
+private struct RoutineCounterButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
